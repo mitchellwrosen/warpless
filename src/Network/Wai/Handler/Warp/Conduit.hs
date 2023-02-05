@@ -1,5 +1,3 @@
-{-# LANGUAGE CPP #-}
-
 module Network.Wai.Handler.Warp.Conduit where
 
 import UnliftIO (assert, throwIO)

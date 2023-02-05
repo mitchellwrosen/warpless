@@ -1,5 +1,3 @@
-{-# LANGUAGE CPP #-}
-
 module Network.Wai.Handler.Warp.HTTP2.Request (
     toRequest
   , getHTTP2Data

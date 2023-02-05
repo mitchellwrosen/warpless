@@ -1,5 +1,3 @@
-{-# LANGUAGE CPP #-}
-
 module Network.Wai.Handler.Warp.HTTP2.Types where
 
 import qualified Data.ByteString as BS

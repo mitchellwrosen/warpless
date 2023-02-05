@@ -1,4 +1,4 @@
-{-# LANGUAGE ImpredicativeTypes, CPP #-}
+{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE MagicHash, UnboxedTuples #-}
 
 module Network.Wai.Handler.Warp.Settings where
@@ -23,7 +23,6 @@ import System.TimeManager
 
 import Network.Wai.Handler.Warp.Imports
 import Network.Wai.Handler.Warp.Types
-import Network.Wai.Handler.Warp.Windows (windowsThreadBlockHack)
 
 -- | Various Warp server settings. This is purposely kept as an abstract data
 -- type so that new settings can be added without breaking backwards
@@ -272,27 +271,16 @@ exceptionResponseForDebug e =
 -- @since 3.3.17
 defaultFork :: ((forall a. IO a -> IO a) -> IO ()) -> IO ()
 defaultFork io =
-#if __GLASGOW_HASKELL__ >= 904
   IO $ \s0 ->
     case io unsafeUnmask of
       IO io' ->
         case (fork# io' s0) of
           (# s1, _tid #) ->
             (# s1, () #)
-#else
-  IO $ \s0 ->
-    case (fork# (io unsafeUnmask) s0) of
-      (# s1, _tid #) ->
-        (# s1, () #)
-#endif
 
 -- | Standard "accept" call for a listening socket.
 --
 -- @since 3.3.24
 defaultAccept :: Socket -> IO (Socket, SockAddr)
 defaultAccept =
-#if WINDOWS
-    windowsThreadBlockHack . accept
-#else
     accept
-#endif

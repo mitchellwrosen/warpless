@@ -1,25 +1,19 @@
-{-# LANGUAGE CPP #-}
-
 -- | File descriptor cache to avoid locks in kernel.
 
 module Network.Wai.Handler.Warp.FdCache (
     withFdCache
   , Fd
   , Refresh
-#ifndef WINDOWS
   , openFile
   , closeFile
   , setFileCloseOnExec
-#endif
   ) where
 
-#ifndef WINDOWS
 import UnliftIO.Exception (bracket)
 import Control.Reaper
 import Data.IORef
 import Network.Wai.Handler.Warp.MultiMap as MM
 import System.Posix.IO (openFd, OpenFileFlags(..), defaultFileFlags, OpenMode(ReadOnly), closeFd, FdOption(CloseOnExec), setFdOption)
-#endif
 import System.Posix.Types (Fd)
 
 ----------------------------------------------------------------
@@ -35,9 +29,6 @@ getFdNothing _ = return (Nothing, return ())
 -- | Creating 'MutableFdCache' and executing the action in the second
 --   argument. The first argument is a cache duration in second.
 withFdCache :: Int -> ((FilePath -> IO (Maybe Fd, Refresh)) -> IO a) -> IO a
-#ifdef WINDOWS
-withFdCache _        action = action getFdNothing
-#else
 withFdCache 0        action = action getFdNothing
 withFdCache duration action = bracket (initialize duration)
                                       terminate
@@ -139,4 +130,3 @@ getFd mfc@(MutableFdCache reaper) path = look mfc path >>= get
     get (Just (FdEntry fd mst)) = do
         refresh mst
         return (Just fd, refresh mst)
-#endif

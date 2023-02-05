@@ -1,4 +1,3 @@
-{-# LANGUAGE CPP #-}
 {-# OPTIONS_GHC -fno-warn-deprecations #-}
 
 module Network.Wai.Handler.Warp.Run where
@@ -12,9 +11,7 @@ import Data.Streaming.Network (bindPortTCP)
 import Foreign.C.Error (Errno(..), eCONNABORTED, eMFILE)
 import GHC.IO.Exception (IOException(..), IOErrorType(..))
 import Network.Socket (Socket, close, withSocketsDo, SockAddr, setSocketOption, SocketOption(..))
-#if MIN_VERSION_network(3,1,1)
 import Network.Socket (gracefulClose)
-#endif
 import Network.Socket.BufferPool
 import qualified Network.Socket.ByteString as Sock
 import Network.Wai
@@ -39,19 +36,11 @@ import Network.Wai.Handler.Warp.Settings
 import Network.Wai.Handler.Warp.Types
 
 
-#if WINDOWS
-import Network.Wai.Handler.Warp.Windows
-#else
 import Network.Socket (fdSocket)
-#endif
 
 -- | Creating 'Connection' for plain HTTP based on a given socket.
 socketConnection :: Settings -> Socket -> IO Connection
-#if MIN_VERSION_network(3,1,1)
 socketConnection set s = do
-#else
-socketConnection _ s = do
-#endif
     bufferPool <- newBufferPool 2048 16384
     writeBuffer <- createWriteBuffer 16384
     writeBufferRef <- newIORef writeBuffer
@@ -60,7 +49,6 @@ socketConnection _ s = do
         connSendMany = Sock.sendMany s
       , connSendAll = sendall
       , connSendFile = sendfile writeBufferRef
-#if MIN_VERSION_network(3,1,1)
       , connClose = do
             h2 <- readIORef isH2
             let tm = if h2 then settingsGracefulCloseTimeout2 set
@@ -69,9 +57,6 @@ socketConnection _ s = do
                 close s
               else
                 gracefulClose s tm `UnliftIO.catchAny` \(UnliftIO.SomeException _) -> return ()
-#else
-      , connClose = close s
-#endif
       , connRecv = receive' s bufferPool
       , connRecvBuf = receiveBuf s
       , connWriteBuffer = writeBufferRef
@@ -366,17 +351,9 @@ serveConnection conn ii th origAddr transport settings app = do
 --
 -- @since 3.2.17
 setSocketCloseOnExec :: Socket -> IO ()
-#if WINDOWS
-setSocketCloseOnExec _ = return ()
-#else
 setSocketCloseOnExec socket = do
-#if MIN_VERSION_network(3,0,0)
     fd <- fdSocket socket
-#else
-    let fd = fdSocket socket
-#endif
     F.setFileCloseOnExec $ fromIntegral fd
-#endif
 
 gracefulShutdown :: Settings -> Counter -> IO ()
 gracefulShutdown set counter =

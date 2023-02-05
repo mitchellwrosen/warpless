@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards, CPP #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Network.Wai.Handler.Warp.FileInfoCache (
     FileInfo(..)

@@ -1,5 +1,3 @@
-{-# LANGUAGE CPP #-}
-
 module Network.Wai.Handler.Warp.File (
     RspFileInfo(..)
   , conditionalRequest

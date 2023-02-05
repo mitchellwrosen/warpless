@@ -4,20 +4,13 @@ module Network.Wai.Handler.Warp.SendFile (
     sendFile
   , readSendFile
   , packHeader -- for testing
-#ifndef WINDOWS
   , positionRead
-#endif
   ) where
 
 import qualified Data.ByteString as BS
 import Network.Socket (Socket)
 import Network.Socket.BufferPool
 
-#ifdef WINDOWS
-import Foreign.ForeignPtr (newForeignPtr_)
-import Foreign.Ptr (plusPtr)
-import qualified System.IO as IO
-#else
 import qualified UnliftIO
 import Foreign.C.Error (throwErrno)
 import Foreign.C.Types
@@ -25,7 +18,6 @@ import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Network.Sendfile
 import Network.Wai.Handler.Warp.FdCache (openFile, closeFile)
 import System.Posix.Types
-#endif
 
 import Network.Wai.Handler.Warp.Buffer
 import Network.Wai.Handler.Warp.Imports
@@ -84,33 +76,6 @@ mini i n
 --   For Windows, this is emulated by 'Handle'.
 --
 -- Since: 3.1.0
-#ifdef WINDOWS
-readSendFile :: Buffer -> BufSize -> (ByteString -> IO ()) -> SendFile
-readSendFile buf siz send fid off0 len0 hook headers = do
-    hn <- packHeader buf siz send hook headers 0
-    let room = siz - hn
-        buf' = buf `plusPtr` hn
-    IO.withBinaryFile path IO.ReadMode $ \h -> do
-        IO.hSeek h IO.AbsoluteSeek off0
-        n <- IO.hGetBufSome h buf' (mini room len0)
-        bufferIO buf (hn + n) send
-        hook
-        let n' = fromIntegral n
-        fptr <- newForeignPtr_ buf
-        loop h fptr (len0 - n')
-  where
-    path = fileIdPath fid
-    loop h fptr len
-      | len <= 0  = return ()
-      | otherwise = do
-        n <- IO.hGetBufSome h buf (mini siz len)
-        when (n /= 0) $ do
-            let bs = PS fptr 0 n
-                n' = fromIntegral n
-            send bs
-            hook
-            loop h fptr (len - n')
-#else
 readSendFile :: Buffer -> BufSize -> (ByteString -> IO ()) -> SendFile
 readSendFile buf siz send fid off0 len0 hook headers =
   UnliftIO.bracket setup teardown $ \fd -> do
@@ -147,4 +112,3 @@ positionRead fd buf siz off = do
 
 foreign import ccall unsafe "pread"
   c_pread :: Fd -> Ptr CChar -> ByteCount -> FileOffset -> IO CSsize
-#endif
