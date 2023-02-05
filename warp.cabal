@@ -28,10 +28,6 @@ Flag allow-sendfilefd
     Description: Allow use of sendfileFd (not available on GNU/kFreeBSD)
     Default:     True
 
-Flag warp-debug
-    Description: print debug output. not suitable for production
-    Default:     False
-
 Library
   Build-Depends:     base ^>= 4.16 || ^>= 4.17
                    , array
@@ -100,8 +96,6 @@ Library
                      Paths_warpless
   Ghc-Options:       -Wall
 
-  if flag(warp-debug)
-      Cpp-Options:   -DWARP_DEBUG
   if (os(linux) || os(freebsd) || os(darwin)) && flag(allow-sendfilefd)
       Cpp-Options:   -DSENDFILEFD
   if impl(ghc >= 8)

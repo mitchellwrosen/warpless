@@ -1,5 +1,3 @@
-{-# LANGUAGE CPP #-}
-
 module Network.Wai.Handler.Warp.Response (
     sendResponse
   , sanitizeHeaderValue -- for testing
@@ -276,9 +274,6 @@ sendRsp conn ii th ver _ hs0 rspidxhdr maxRspBufSize (RspFile path Nothing reqid
     efinfo <- UnliftIO.tryIO $ getFileInfo ii path
     case efinfo of
         Left (_ex :: UnliftIO.IOException) ->
-#ifdef WARP_DEBUG
-          print _ex >>
-#endif
           sendRspFile404 conn ii th ver hs0 rspidxhdr maxRspBufSize
         Right finfo -> case conditionalRequest finfo hs0 rspidxhdr reqidxhdr of
           WithoutBody s         -> sendRsp conn ii th ver s hs0 rspidxhdr maxRspBufSize RspNoBody
