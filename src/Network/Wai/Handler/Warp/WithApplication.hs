@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 module Network.Wai.Handler.Warp.WithApplication (
   withApplication,
   withApplicationSettings,

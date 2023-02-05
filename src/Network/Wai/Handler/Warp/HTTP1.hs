@@ -1,14 +1,10 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE PackageImports #-}
-{-# LANGUAGE PatternGuards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 
 module Network.Wai.Handler.Warp.HTTP1 (
     http1
   ) where
 
-import "iproute" Data.IP (toHostAddress, toHostAddress6)
+import Data.IP (toHostAddress, toHostAddress6)
 import qualified Control.Concurrent as Conc (yield)
 import qualified UnliftIO
 import UnliftIO (SomeException, fromException, throwIO)

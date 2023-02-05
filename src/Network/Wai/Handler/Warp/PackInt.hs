@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings, BangPatterns #-}
-
 module Network.Wai.Handler.Warp.PackInt where
 
 import Data.ByteString.Internal (unsafeCreate)

@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
-
 module Network.Wai.Handler.Warp.Header where
 
 import Data.Array

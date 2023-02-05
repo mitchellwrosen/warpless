@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, ViewPatterns #-}
-{-# LANGUAGE PatternGuards, RankNTypes #-}
 {-# LANGUAGE ImpredicativeTypes, CPP #-}
 {-# LANGUAGE MagicHash, UnboxedTuples #-}
 

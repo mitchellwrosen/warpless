@@ -1,5 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
-
 module Network.Wai.Handler.Warp.RequestHeader (
       parseHeaderLines
     ) where

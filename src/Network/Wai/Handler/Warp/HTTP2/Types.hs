@@ -1,5 +1,4 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE OverloadedStrings #-}
 
 module Network.Wai.Handler.Warp.HTTP2.Types where
 

@@ -1,6 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE BangPatterns #-}
-
 module Network.Wai.Handler.Warp.ResponseHeader (composeHeader) where
 
 import qualified Data.ByteString as S

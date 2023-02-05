@@ -1,8 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE BangPatterns #-}
 
 module Network.Wai.Handler.Warp.Response (
     sendResponse
