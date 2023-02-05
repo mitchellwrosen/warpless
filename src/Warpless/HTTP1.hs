@@ -166,11 +166,7 @@ processRequest settings ii conn app th istatus src req mremainingRef idxhdr next
     -- from the request body, simple drop this connection instead of
     -- reading it all in to satisfy a keep-alive request.
     case settingsMaximumBodyFlush settings of
-      Nothing -> do
-        flushEntireBody nextBodyFlush
-        T.resume th
-        return True
-      Just maxToRead -> do
+      Just maxToRead | maxToRead > 0 -> do
         let tryKeepAlive = do
               -- flush the rest of the request body
               isComplete <- flushBody nextBodyFlush maxToRead
@@ -186,6 +182,10 @@ processRequest settings ii conn app th istatus src req mremainingRef idxhdr next
               then tryKeepAlive
               else return False
           Nothing -> tryKeepAlive
+      _ -> do
+        flushEntireBody nextBodyFlush
+        T.resume th
+        return True
     else return False
 
 sendErrorResponse :: Settings -> InternalInfo -> Connection -> T.Handle -> IORef Bool -> Request -> SomeException -> IO Bool

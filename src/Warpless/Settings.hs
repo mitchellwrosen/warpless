@@ -33,9 +33,10 @@ import Warpless.Types
 data Settings = Settings
   { -- | Port to listen on. Default value: 3000
     settingsPort :: !Port,
-    -- | Default value: HostIPv4
+    -- | Interface to bind to. Default value: HostIPv4
     settingsHost :: !HostPreference,
-    -- | What to do with exceptions thrown by either the application or server. Default: ignore server-generated exceptions (see 'InvalidRequest') and print application-generated applications to stderr.
+    -- | What to do with exceptions thrown by either the application or server.
+    -- Default: 'defaultOnException'
     settingsOnException :: !(Maybe Request -> SomeException -> IO ()),
     -- | A function to create `Response` when an exception occurs.
     --
@@ -43,34 +44,59 @@ data Settings = Settings
     --
     -- Since 2.0.3
     settingsOnExceptionResponse :: !(SomeException -> Response),
-    -- | What to do when a connection is open. When 'False' is returned, the connection is closed immediately. Otherwise, the connection is going on. Default: always returns 'True'.
+    -- | What to do when a connection is opened. When 'False' is returned, the
+    -- connection is closed immediately. Otherwise, the connection is going on.
+    -- Default: always returns 'True'.
     settingsOnOpen :: !(SockAddr -> IO Bool),
-    -- | What to do when a connection is close. Default: do nothing.
+    -- | What to do when a connection is closed. Default: do nothing.
     settingsOnClose :: !(SockAddr -> IO ()),
-    -- | Timeout value in seconds. Default value: 30
+    -- | "Slow-loris" timeout lower-bound value in seconds.  Connections where
+    -- network progress is made less frequently than this may be closed.  In
+    -- practice many connections may be allowed to go without progress for up to
+    -- twice this amount of time.  Note that this timeout is not applied to
+    -- application code, only network progress.
+    --
+    -- Default value: 30
     settingsTimeout :: !Int,
-    -- | Use an existing timeout manager instead of spawning a new one. If used, 'settingsTimeout' is ignored. Default is 'Nothing'
+    -- | Use an existing timeout manager instead of spawning a new one. If used,
+    -- 'settingsTimeout' is ignored.
     settingsManager :: !(Maybe Manager),
-    -- | Cache duration time of file descriptors in seconds. 0 means that the cache mechanism is not used. Default value: 0
+    -- | Cache duration time of file descriptors in seconds. 0 means that the cache mechanism is not used.
+    --
+    -- The FD cache is an optimization that is useful for servers dealing with
+    -- static files. However, if files are being modified, it can cause incorrect
+    -- results in some cases. Therefore, we disable it by default. If you know that
+    -- your files will be static or you prefer performance to file consistency,
+    -- it's recommended to turn this on; a reasonable value for those cases is 10.
+    -- Enabling this cache results in drastic performance improvement for file
+    -- transfers.
+    --
+    -- Default value: 0
     settingsFdCacheDuration :: !Int,
-    -- | Cache duration time of file information in seconds. 0 means that the cache mechanism is not used. Default value: 0
+    -- | Cache duration time of file information in seconds. 0 means that the cache mechanism is not used.
+    --
+    -- The file information cache is an optimization that is useful for servers dealing with
+    -- static files. However, if files are being modified, it can cause incorrect
+    -- results in some cases. Therefore, we disable it by default. If you know that
+    -- your files will be static or you prefer performance to file consistency,
+    -- it's recommended to turn this on; a reasonable value for those cases is 10.
+    -- Enabling this cache results in drastic performance improvement for file
+    -- transfers.
+    --
+    -- Default value: 0
     settingsFileInfoCacheDuration :: !Int,
     -- | Code to run after the listening socket is ready but before entering
     -- the main event loop. Useful for signaling to tests that they can start
     -- running, or to drop permissions after binding to a restricted port.
     --
     -- Default: do nothing.
-    --
-    -- Since 1.3.6
     settingsBeforeMainLoop :: !(IO ()),
     -- | Code to fork a new thread to accept a connection.
     --
     -- This may be useful if you need OS bound threads, or if
     -- you wish to develop an alternative threading model.
     --
-    -- Default: 'defaultFork'
-    --
-    -- Since 3.0.4
+    -- Default: void . forkIOWithUnmask
     settingsFork :: !(((forall a. IO a -> IO a) -> IO ()) -> IO ()),
     -- | Code to accept a new connection.
     --
@@ -78,79 +104,90 @@ data Settings = Settings
     -- than a standard accept call.
     --
     -- Default: 'defaultAccept'
-    --
-    -- Since 3.3.24
     settingsAccept :: !(Socket -> IO (Socket, SockAddr)),
     -- | Perform no parsing on the rawPathInfo.
     --
     -- This is useful for writing HTTP proxies.
     --
     -- Default: False
-    --
-    -- Since 2.0.3
     settingsNoParsePath :: !Bool,
-    -- | An action to install a handler (e.g. Unix signal handler)
-    -- to close a listen socket.
-    -- The first argument is an action to close the listen socket.
+    -- | A code to install shutdown handler.
     --
-    -- Default: no action
+    -- For instance, this code should set up a UNIX signal
+    -- handler. The handler should call the first argument,
+    -- which closes the listen socket, at shutdown.
     --
-    -- Since 3.0.1
+    -- Example usage:
+    --
+    -- @
+    -- settings :: IO () -> 'Settings'
+    -- settings shutdownAction = 'setInstallShutdownHandler' shutdownHandler 'defaultSettings'
+    --   __where__
+    --     shutdownHandler closeSocket =
+    --       void $ 'System.Posix.Signals.installHandler' 'System.Posix.Signals.sigTERM' ('System.Posix.Signals.Catch' $ shutdownAction >> closeSocket) 'Nothing'
+    -- @
+    --
+    -- Note that by default, the graceful shutdown mode lasts indefinitely
+    -- (see 'setGracefulShutdownTimeout'). If you install a signal handler as above,
+    -- upon receiving that signal, the custom shutdown action will run /and/ all
+    -- outstanding requests will be handled.
+    --
+    -- You may instead prefer to do one or both of the following:
+    --
+    -- * Only wait a finite amount of time for outstanding requests to complete,
+    --   using 'setGracefulShutdownTimeout'.
+    -- * Only catch one signal, so the second hard-kills the Warp server, using
+    --   'System.Posix.Signals.CatchOnce'.
+    --
+    -- Default: does not install any code.
     settingsInstallShutdownHandler :: !(IO () -> IO ()),
-    -- | Default server name if application does not set one.
-    --
-    -- Since 3.0.2
+    -- | Default server name to be sent as the \"Server:\" header
+    --   if an application does not set one.
+    --   If an empty string is set, the \"Server:\" header is not sent.
+    --   This is true even if an application set one.
     settingsServerName :: !ByteString,
-    -- | See @setMaximumBodyFlush@.
+    -- | The maximum number of bytes to flush from an unconsumed request body.
     --
-    -- Since 3.0.3
+    -- By default, Warp does not flush the request body so that, if a large body is
+    -- present, the connection is simply terminated instead of wasting time and
+    -- bandwidth on transmitting it. However, some clients do not deal with that
+    -- situation well. You can either change this setting to @Nothing@ to flush the
+    -- entire body in all cases, or in your application ensure that you always
+    -- consume the entire request body.
+    --
+    -- Default: 8192 bytes.
     settingsMaximumBodyFlush :: !(Maybe Int),
     -- | Specify usage of the PROXY protocol.
-    --
-    -- Since 3.0.5
     settingsProxyProtocol :: !ProxyProtocol,
-    -- | Size of bytes read to prevent Slowloris protection. Default value: 2048
-    --
-    -- Since 3.1.2
+    -- | Size in bytes read to prevent Slowloris attacks. Default value: 2048
     settingsSlowlorisSize :: !Int,
     -- | Whether to enable HTTP2 ALPN/upgrades. Default: True
-    --
-    -- Since 3.1.7
     settingsHTTP2Enabled :: !Bool,
     -- | A log function. Default: no action.
-    --
-    -- Since 3.1.10
     settingsLogger :: !(Request -> H.Status -> Maybe Integer -> IO ()),
     -- | A HTTP/2 server push log function. Default: no action.
-    --
-    -- Since 3.2.7
     settingsServerPushLogger :: !(Request -> ByteString -> Integer -> IO ()),
-    -- | An optional timeout to limit the time (in seconds) waiting for
-    -- a graceful shutdown of the web server.
+    -- | Set the graceful shutdown timeout. A timeout of `Nothing' will
+    -- wait indefinitely, and a number, if provided, will be treated as seconds
+    -- to wait for requests to finish, before shutting down the server entirely.
     --
-    -- Since 3.2.8
+    -- Graceful shutdown mode is entered when the server socket is closed; see
+    -- 'setInstallShutdownHandler' for an example of how this could be done in
+    -- response to a UNIX signal.
     settingsGracefulShutdownTimeout :: !(Maybe Int),
     -- | A timeout to limit the time (in milliseconds) waiting for
     -- FIN for HTTP/1.x. 0 means uses immediate close.
     -- Default: 0.
-    --
-    -- Since 3.3.5
     settingsGracefulCloseTimeout1 :: !Int,
     -- | A timeout to limit the time (in milliseconds) waiting for
     -- FIN for HTTP/2. 0 means uses immediate close.
     -- Default: 2000.
-    --
-    -- Since 3.3.5
     settingsGracefulCloseTimeout2 :: !Int,
     -- | Determines the maximum header size that Warp will tolerate when using HTTP/1.x.
-    --
-    -- Since 3.3.8
     settingsMaxTotalHeaderLength :: !Int,
     -- | Specify the header value of Alternative Services (AltSvc:).
     --
     -- Default: Nothing
-    --
-    -- Since 3.3.11
     settingsAltSvc :: !(Maybe ByteString),
     -- | Determines the maxium buffer size when sending `Builder` responses
     -- (See `responseBuilder`).
@@ -163,18 +200,36 @@ data Settings = Settings
     -- builder requires more than this maximum.
     --
     -- Default: 1049_000_000 = 1 MiB.
-    --
-    -- Since 3.3.22
     settingsMaxBuilderResponseBufferSize :: !Int
   }
 
 -- | Specify usage of the PROXY protocol.
 data ProxyProtocol
-  = -- | See @setProxyProtocolNone@.
+  = -- | Do not use the PROXY protocol.
     ProxyProtocolNone
-  | -- | See @setProxyProtocolRequired@.
+  | -- | Require PROXY header.
+    --
+    -- This is for cases where a "dumb" TCP/SSL proxy is being used, which cannot
+    -- add an @X-Forwarded-For@ HTTP header field but has enabled support for the
+    -- PROXY protocol.
+    --
+    -- See <http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt> and
+    -- <http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/TerminologyandKeyConcepts.html#proxy-protocol>.
+    --
+    -- Only the human-readable header format (version 1) is supported. The binary
+    -- header format (version 2) is /not/ supported.
     ProxyProtocolRequired
-  | -- | See @setProxyProtocolOptional@.
+  | -- | Use the PROXY header if it exists, but also accept
+    -- connections without the header.  See 'setProxyProtocolRequired'.
+    --
+    -- WARNING: This is contrary to the PROXY protocol specification and
+    -- using it can indicate a security problem with your
+    -- architecture if the web server is directly accessible
+    -- to the public, since it would allow easy IP address
+    -- spoofing.  However, it can be useful in some cases,
+    -- such as if a load balancer health check uses regular
+    -- HTTP without the PROXY header, but proxied
+    -- connections /do/ include the PROXY header.
     ProxyProtocolOptional
 
 -- | The default settings for the Warp server. See the individual settings for
