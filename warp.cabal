@@ -20,6 +20,10 @@ extra-source-files:
   CHANGELOG.md
   README.md
 
+source-repository head
+  type: git
+  location: https://github.com/mitchellwrosen/warpless.git
+
 Flag allow-sendfilefd
     Description: Allow use of sendfileFd (not available on GNU/kFreeBSD)
     Default:     True
@@ -109,7 +113,3 @@ Library
   if impl(ghc >= 8)
       Default-Extensions:  Strict StrictData
   HS-Source-Dirs:       src
-
-Source-Repository head
-  Type:     git
-  Location: git://github.com/yesodweb/wai.git
