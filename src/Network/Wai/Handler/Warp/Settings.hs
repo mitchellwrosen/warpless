@@ -18,7 +18,7 @@ import GHC.IO.Exception (IOErrorType(..), AsyncException (ThreadKilled))
 import qualified Network.HTTP.Types as H
 import Network.Socket (Socket, SockAddr, accept)
 import Network.Wai
-import qualified Paths_warp
+import qualified Paths_warpless
 import System.IO (stderr)
 import System.IO.Error (ioeGetErrorType)
 import System.TimeManager
@@ -192,7 +192,7 @@ defaultSettings = Settings
     , settingsAccept = defaultAccept
     , settingsNoParsePath = False
     , settingsInstallShutdownHandler = const $ return ()
-    , settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warp.version
+    , settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warpless.version
     , settingsMaximumBodyFlush = Just 8192
     , settingsProxyProtocol = ProxyProtocolNone
     , settingsSlowlorisSize = 2048

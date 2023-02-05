@@ -1,13 +1,1 @@
-dist/
-*.swp
-*.hi
-*.o
-tarballs/
-/.hsenv
-/.shelly
-.cabal-sandbox/
-cabal.sandbox.config
-.stack-work/
-*~
-stack*.yaml.lock
 dist-newstyle/
