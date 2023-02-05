@@ -54,7 +54,6 @@ Library
                    , text
                    , time-manager
                    , unix
-                   , unix-compat               >= 0.2
                    , vault                     >= 0.3
                    , wai                       >= 3.2      && < 3.3
                    , word8
