@@ -1,4 +1,11 @@
-module Warpless.HashMap where
+module Warpless.HashMap
+  ( HashMap,
+    empty,
+    isEmpty,
+    insert,
+    lookup,
+  )
+where
 
 import Data.Hashable (hash)
 import Data.IntMap.Strict (IntMap)

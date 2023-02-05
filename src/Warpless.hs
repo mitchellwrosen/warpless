@@ -50,7 +50,6 @@ module Warpless
 
     -- ** Exception response handler
     defaultOnExceptionResponse,
-    exceptionResponseForDebug,
 
     -- * Data types
     HostPreference,

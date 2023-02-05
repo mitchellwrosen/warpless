@@ -22,7 +22,7 @@ import Warpless.PackInt
 data RspFileInfo
   = WithoutBody !H.Status
   | WithBody !H.Status !H.ResponseHeaders !Integer !Integer
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 ----------------------------------------------------------------
 

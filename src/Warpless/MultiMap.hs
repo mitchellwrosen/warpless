@@ -73,12 +73,14 @@ toList (MultiMap mm) = concatMap snd $ I.toAscList mm
 
 -- | O(n)
 pruneWith ::
+  forall v.
   MultiMap v ->
   ((FilePath, v) -> IO Bool) ->
   IO (MultiMap v)
 pruneWith (MultiMap mm) action =
   I.foldrWithKey go (pure . MultiMap) mm I.empty
   where
+    go :: I.Key -> [(FilePath, v)] -> (IntMap [(FilePath, v)] -> IO a) -> IntMap [(FilePath, v)] -> IO a
     go h s cont acc = do
       rs <- filterM action s
       case rs of

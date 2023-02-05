@@ -58,6 +58,9 @@ Library
       Build-Depends: semigroups
   default-extensions:
     BangPatterns
+    DeriveAnyClass
+    DerivingStrategies
+    LambdaCase
     OverloadedStrings
     ViewPatterns
   default-language: GHC2021

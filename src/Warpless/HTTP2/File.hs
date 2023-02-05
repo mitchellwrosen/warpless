@@ -1,5 +1,9 @@
-module Warpless.HTTP2.File where
+module Warpless.HTTP2.File
+  ( pReadMaker,
+  )
+where
 
+import Data.Int (Int64)
 import Network.HTTP2.Server
 import Warpless.FdCache
 import Warpless.SendFile (positionRead)
@@ -18,7 +22,6 @@ pReadMaker ii path = do
       return (pread fd, Closer $ closeFile fd)
   where
     pread :: Fd -> PositionRead
-    pread fd off bytes buf = fromIntegral <$> positionRead fd buf bytes' off'
-      where
-        bytes' = fromIntegral bytes
-        off' = fromIntegral off
+    pread fd off bytes buf =
+      fromIntegral @Int @ByteCount
+        <$> positionRead fd buf (fromIntegral @Int64 @Int bytes) (fromIntegral @Int64 @Integer off)

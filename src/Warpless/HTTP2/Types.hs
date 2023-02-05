@@ -1,4 +1,11 @@
-module Warpless.HTTP2.Types where
+module Warpless.HTTP2.Types
+  ( isHTTP2,
+    HTTP2Data (..),
+    defaultHTTP2Data,
+    PushPromise (..),
+    defaultPushPromise,
+  )
+where
 
 import Data.ByteString qualified as BS
 import Network.HTTP.Types qualified as H
@@ -68,7 +75,7 @@ data PushPromise = PushPromise
     --   Since: 3.2.7
     promisedWeight :: !Weight
   }
-  deriving (Eq, Ord, Show)
+  deriving stock (Eq, Ord, Show)
 
 -- | Default push promise.
 --

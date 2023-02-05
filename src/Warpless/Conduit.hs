@@ -1,4 +1,11 @@
-module Warpless.Conduit where
+module Warpless.Conduit
+  ( ISource (..),
+    mkISource,
+    readISource,
+    mkCSource,
+    readCSource,
+  )
+where
 
 import Data.ByteString qualified as S
 import Data.IORef qualified as I
@@ -65,7 +72,7 @@ data ChunkState
   | NeedLenNewline
   | HaveLen Word
   | DoneChunking
-  deriving (Show)
+  deriving stock (Show)
 
 mkCSource :: Source -> IO CSource
 mkCSource src = do
@@ -95,6 +102,7 @@ readCSource (CSource src ref) = do
               leftoverSource src y
               yield' x NeedLenNewline
 
+    yield' :: ByteString -> ChunkState -> IO ByteString
     yield' bs mlen = do
       I.writeIORef ref mlen
       return bs
@@ -146,7 +154,7 @@ readCSource (CSource src ref) = do
                         else S.break (== 10) $ bs `S.append` bs2
                 | otherwise -> return (x, y)
           let w =
-                S.foldl' (\i c -> i * 16 + fromIntegral (hexToWord c)) 0 $
+                S.foldl' (\i c -> i * 16 + fromIntegral @Word8 @Word (hexToWord c)) 0 $
                   S.takeWhile isHexDigit x
 
           let y' = S.drop 1 y
@@ -156,6 +164,7 @@ readCSource (CSource src ref) = do
               else return y'
           withLen w y''
 
+    hexToWord :: Word8 -> Word8
     hexToWord w
       | w < 58 = w - 48
       | w < 71 = w - 55

@@ -15,7 +15,6 @@ import Data.ByteString qualified as S
 import Data.ByteString.Unsafe qualified as SU
 import Data.CaseInsensitive qualified as CI
 import Data.IORef qualified as I
-import Data.Typeable (Typeable)
 import Data.Vault.Lazy qualified as Vault
 import Network.HTTP.Types qualified as H
 import Network.Socket (SockAddr)
@@ -116,9 +115,8 @@ headerLines maxTotalHeaderLength firstRequest src = do
     else push maxTotalHeaderLength src (THStatus 0 0 id id) bs
 
 data NoKeepAliveRequest = NoKeepAliveRequest
-  deriving (Show, Typeable)
-
-instance Exception NoKeepAliveRequest
+  deriving stock (Show)
+  deriving anyclass (Exception)
 
 ----------------------------------------------------------------
 
@@ -127,14 +125,15 @@ handleExpect ::
   H.HttpVersion ->
   Maybe HeaderValue ->
   IO ()
-handleExpect conn ver (Just "100-continue") = do
-  connSendAll conn continue
-  Conc.yield
-  where
-    continue
-      | ver == H.http11 = "HTTP/1.1 100 Continue\r\n\r\n"
-      | otherwise = "HTTP/1.0 100 Continue\r\n\r\n"
-handleExpect _ _ _ = return ()
+handleExpect conn ver = \case
+  Just "100-continue" -> do
+    let continue :: ByteString
+        continue
+          | ver == H.http11 = "HTTP/1.1 100 Continue\r\n\r\n"
+          | otherwise = "HTTP/1.0 100 Continue\r\n\r\n"
+    connSendAll conn continue
+    Conc.yield
+  _ -> return ()
 
 ----------------------------------------------------------------
 

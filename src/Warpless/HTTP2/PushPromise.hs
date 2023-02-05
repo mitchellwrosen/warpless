@@ -1,4 +1,7 @@
-module Warpless.HTTP2.PushPromise where
+module Warpless.HTTP2.PushPromise
+  ( fromPushPromises,
+  )
+where
 
 import Network.HTTP.Types qualified as H
 import Network.HTTP2.Server qualified as H2
@@ -24,8 +27,8 @@ fromPushPromise ii (PushPromise path file rsphdr w) = do
   case efinfo of
     Left (_ex :: UnliftIO.IOException) -> return Nothing
     Right finfo -> do
-      let !siz = fromIntegral $ fileInfoSize finfo
-          !fileSpec = H2.FileSpec file 0 siz
+      let !siz = fileInfoSize finfo
+          !fileSpec = H2.FileSpec file 0 (fromIntegral @Integer @H2.ByteCount siz)
           !rsp = H2.responseFile H.ok200 rsphdr fileSpec
           !pp = H2.pushPromise path rsp w
       return $ Just pp

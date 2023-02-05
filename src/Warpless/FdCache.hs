@@ -106,6 +106,7 @@ clean old = do
   new <- pruneWith old prune
   return $ merge new
   where
+    prune :: (FilePath, FdEntry) -> IO Bool
     prune (_, FdEntry fd mst) = status mst >>= act
       where
         act Active = inactive mst >> return True

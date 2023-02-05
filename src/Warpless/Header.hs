@@ -1,5 +1,15 @@
-module Warpless.Header where
+module Warpless.Header
+  ( IndexedHeader,
+    indexRequestHeader,
+    RequestHeaderIndex (..),
+    requestMaxIndex,
+    defaultIndexRequestHeader,
+    indexResponseHeader,
+    ResponseHeaderIndex (..),
+  )
+where
 
+import Control.Monad.ST
 import Data.Array
 import Data.Array.ST
 import Data.ByteString qualified as BS
@@ -29,7 +39,7 @@ data RequestHeaderIndex
   | ReqIfRange
   | ReqReferer
   | ReqUserAgent
-  deriving (Enum, Bounded)
+  deriving stock (Enum, Bounded)
 
 -- | The size for 'IndexedHeader' for HTTP Request.
 --   From 0 to this corresponds to \"Content-Length\", \"Transfer-Encoding\",
@@ -75,7 +85,7 @@ data ResponseHeaderIndex
   | ResServer
   | ResDate
   | ResLastModified
-  deriving (Enum, Bounded)
+  deriving stock (Enum, Bounded)
 
 -- | The size for 'IndexedHeader' for HTTP Response.
 responseMaxIndex :: Int
@@ -99,6 +109,7 @@ traverseHeader hdr maxidx getIndex = runSTArray $ do
   mapM_ (insert arr) hdr
   return arr
   where
+    insert :: STArray s Int (Maybe HeaderValue) -> Header -> ST s ()
     insert arr (key, val)
       | idx == -1 = return ()
       | otherwise = writeArray arr idx (Just val)

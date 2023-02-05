@@ -82,17 +82,17 @@ http2server settings ii transport addr app h2req0 aux0 response = do
   case eResponseReceived of
     Right ResponseReceived -> do
       Just (h2rsp, pps, st) <- I.readIORef ref
-      let msiz = fromIntegral <$> H2.responseBodySize h2rsp
-      logResponse req st msiz
+      let msiz = H2.responseBodySize h2rsp
+      logResponse req st (fromIntegral @Int @Integer <$> msiz)
       mapM_ (logPushPromise req) pps
     Left e -> do
       S.settingsOnException settings (Just req) e
       let ersp = S.settingsOnExceptionResponse settings e
           st = responseStatus ersp
       (h2rsp', _, _) <- fromResponse settings ii req ersp
-      let msiz = fromIntegral <$> H2.responseBodySize h2rsp'
+      let msiz = H2.responseBodySize h2rsp'
       _ <- response h2rsp' []
-      logResponse req st msiz
+      logResponse req st (fromIntegral @Int @Integer <$> msiz)
   return ()
   where
     toWAIRequest h2req aux = toRequest ii settings addr hdr bdylen bdy th transport
@@ -104,13 +104,13 @@ http2server settings ii transport addr app h2req0 aux0 response = do
 
     logResponse = S.settingsLogger settings
 
-    logPushPromise req pp = logger req path siz
+    logPushPromise req pp = logger req path (fromIntegral @Int @Integer siz)
       where
         !logger = S.settingsServerPushLogger settings
         !path = H2.promiseRequestPath pp
         !siz = case H2.responseBodySize $ H2.promiseResponse pp of
           Nothing -> 0
-          Just s -> fromIntegral s
+          Just s -> s
 
 wrappedRecvN :: T.Handle -> IORef Bool -> Int -> (BufSize -> IO ByteString) -> (BufSize -> IO ByteString)
 wrappedRecvN th istatus slowlorisSize readN bufsize = do

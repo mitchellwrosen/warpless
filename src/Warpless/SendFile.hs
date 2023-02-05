@@ -55,13 +55,13 @@ packHeader ::
 packHeader _ _ _ _ [] n = return n
 packHeader buf siz send hook (bs : bss) n
   | len < room = do
-      let dst = buf `plusPtr` n
-      void $ copy dst bs
+      let dst = buf `plusPtr` n :: Ptr Word8
+      _ <- copy dst bs
       packHeader buf siz send hook bss (n + len)
   | otherwise = do
-      let dst = buf `plusPtr` n
+      let dst = buf `plusPtr` n :: Ptr Word8
           (bs1, bs2) = BS.splitAt room bs
-      void $ copy dst bs1
+      _ <- copy dst bs1
       bufferIO buf siz send
       hook
       packHeader buf siz send hook (bs2 : bss) 0
@@ -84,11 +84,11 @@ readSendFile buf siz send fid off0 len0 hook headers =
   UnliftIO.bracket setup teardown $ \fd -> do
     hn <- packHeader buf siz send hook headers 0
     let room = siz - hn
-        buf' = buf `plusPtr` hn
+        buf' = buf `plusPtr` hn :: Ptr Word8
     n <- positionRead fd buf' (mini room len0) off0
     bufferIO buf (hn + n) send
     hook
-    let n' = fromIntegral n
+    let n' = fromIntegral @Int @Integer n
     loop fd (len0 - n') (off0 + n')
   where
     path = fileIdPath fid
@@ -103,7 +103,7 @@ readSendFile buf siz send fid off0 len0 hook headers =
       | otherwise = do
           n <- positionRead fd buf (mini siz len) off
           bufferIO buf n send
-          let n' = fromIntegral n
+          let n' = fromIntegral @Int @Integer n
           hook
           loop fd (len - n') (off + n')
 

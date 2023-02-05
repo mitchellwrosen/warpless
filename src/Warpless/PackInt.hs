@@ -1,4 +1,7 @@
-module Warpless.PackInt where
+module Warpless.PackInt
+  ( packIntegral,
+  )
+where
 
 import Data.ByteString.Internal (unsafeCreate)
 import Foreign.Ptr (Ptr, plusPtr)
@@ -16,7 +19,8 @@ packIntegral n | n < 0 = error "packIntegral"
 packIntegral n = unsafeCreate len go0
   where
     n' = fromIntegral n + 1 :: Double
-    len = ceiling $ logBase 10 n'
+    len = ceiling $ logBase 10 n' :: Int
+    go0 :: Ptr Word8 -> IO ()
     go0 p = go n $ p `plusPtr` (len - 1)
     go :: Integral a => a -> Ptr Word8 -> IO ()
     go i p = do
@@ -40,7 +44,7 @@ packStatus status = unsafeCreate 3 $ \p -> do
   where
     toW8 :: Int -> Word8
     toW8 n = 48 + fromIntegral n
-    !s = fromIntegral $ H.statusCode status
+    !s = H.statusCode status
     (!q0, !r0) = s `divMod` 10
     (!q1, !r1) = q0 `divMod` 10
     !r2 = q1 `mod` 10

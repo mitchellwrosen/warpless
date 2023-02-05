@@ -1,6 +1,14 @@
-{-# OPTIONS_GHC -fno-warn-deprecations #-}
-
-module Warpless.Run where
+module Warpless.Run
+  ( run,
+    runSocket,
+    runSettingsConnection,
+    runSettingsConnectionMaker,
+    runSettingsConnectionMakerSecure,
+    socketConnection,
+    setSocketCloseOnExec,
+    withII,
+  )
+where
 
 import Control.Arrow (first)
 import Control.Exception (allowInterrupt)
@@ -143,6 +151,7 @@ runSocket set@Settings {settingsAccept = accept'} socket app = do
 runSettingsConnection :: Settings -> IO (Connection, SockAddr) -> Application -> IO ()
 runSettingsConnection set getConn app = runSettingsConnectionMaker set getConnMaker app
   where
+    getConnMaker :: IO (IO Connection, SockAddr)
     getConnMaker = do
       (conn, sa) <- getConn
       return (return conn, sa)
@@ -153,6 +162,7 @@ runSettingsConnectionMaker :: Settings -> IO (IO Connection, SockAddr) -> Applic
 runSettingsConnectionMaker x y =
   runSettingsConnectionMakerSecure x (toTCP <$> y)
   where
+    toTCP :: (IO Connection, SockAddr) -> (IO (Connection, Transport), SockAddr)
     toTCP = first ((,TCP) <$>)
 
 ----------------------------------------------------------------
@@ -184,6 +194,7 @@ withII set action =
     !fdCacheDurationInSeconds = settingsFdCacheDuration set * 1000000
     !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration set * 1000000
     !timeoutInSeconds = settingsTimeout set * 1000000
+    withTimeoutManager :: forall r. (T.Manager -> IO r) -> IO r
     withTimeoutManager f = case settingsManager set of
       Just tm -> f tm
       Nothing ->
@@ -288,6 +299,7 @@ fork set mkConn addr app counter ii = settingsFork set $ \unmask ->
     -- fact that async exceptions are still masked.
     UnliftIO.bracket mkConn cleanUp (serve unmask)
   where
+    cleanUp :: (Connection, Transport) -> IO ()
     cleanUp (conn, _) =
       connClose conn `UnliftIO.finally` do
         writeBuffer <- readIORef $ connWriteBuffer conn
@@ -295,6 +307,7 @@ fork set mkConn addr app counter ii = settingsFork set $ \unmask ->
 
     -- We need to register a timeout handler for this thread, and
     -- cancel that handler as soon as we exit.
+    serve :: (forall x. IO x -> IO x) -> (Connection, Transport) -> IO ()
     serve unmask (conn, transport) = UnliftIO.bracket register cancel $ \th -> do
       -- We now have fully registered a connection close handler in
       -- the case of all exceptions, so it is safe to once again
@@ -313,6 +326,7 @@ fork set mkConn addr app counter ii = settingsFork set $ \unmask ->
         cancel = T.cancel
 
     onOpen adr = increase counter >> settingsOnOpen set adr
+    onClose :: SockAddr -> Bool -> IO ()
     onClose adr _ = decrease counter >> settingsOnClose set adr
 
 serveConnection ::
@@ -358,4 +372,4 @@ gracefulShutdown set counter =
     (Just seconds) ->
       void (timeout (seconds * microsPerSecond) (waitForZero counter))
       where
-        microsPerSecond = 1000000
+        microsPerSecond = 1_000_000 :: Int

@@ -358,9 +358,11 @@ checkPersist req reqidxhdr
   where
     ver = httpVersion req
     conn = reqidxhdr ! fromEnum ReqConnection
+    checkPersist11 :: Maybe ByteString -> Bool
     checkPersist11 (Just x)
       | CI.foldCase x == "close" = False
     checkPersist11 _ = True
+    checkPersist10 :: Maybe ByteString -> Bool
     checkPersist10 (Just x)
       | CI.foldCase x == "keep-alive" = True
     checkPersist10 _ = False

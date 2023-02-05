@@ -48,10 +48,11 @@ copyStatus !ptr !httpversion !status = do
 
 {-# INLINE copyHeaders #-}
 copyHeaders :: Ptr Word8 -> [H.Header] -> IO (Ptr Word8)
-copyHeaders !ptr [] = return ptr
-copyHeaders !ptr (h : hs) = do
-  ptr1 <- copyHeader ptr h
-  copyHeaders ptr1 hs
+copyHeaders !ptr = \case
+  [] -> return ptr
+  h : hs -> do
+    ptr1 <- copyHeader ptr h
+    copyHeaders ptr1 hs
 
 {-# INLINE copyHeader #-}
 copyHeader :: Ptr Word8 -> H.Header -> IO (Ptr Word8)

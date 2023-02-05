@@ -1,10 +1,16 @@
-{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
 
-module Warpless.Settings where
+module Warpless.Settings
+  ( Settings (..),
+    defaultSettings,
+    defaultShouldDisplayException,
+    defaultOnException,
+    defaultOnExceptionResponse,
+    ProxyProtocol (..),
+  )
+where
 
-import Data.ByteString.Builder qualified as Builder
 import Data.ByteString.Char8 qualified as C8
 import Data.Streaming.Network (HostPreference)
 import Data.Text qualified as T
@@ -322,17 +328,6 @@ defaultOnExceptionResponse e
         H.internalServerError500
         [(H.hContentType, "text/plain; charset=utf-8")]
         "Something went wrong"
-
--- | Exception handler for the debugging purpose.
---   500, text/plain, a showed exception.
---
--- Since: 2.0.3.2
-exceptionResponseForDebug :: SomeException -> Response
-exceptionResponseForDebug e =
-  responseBuilder
-    H.internalServerError500
-    [(H.hContentType, "text/plain; charset=utf-8")]
-    $ "Exception: " <> Builder.stringUtf8 (show e)
 
 -- | Similar to @forkIOWithUnmask@, but does not set up the default exception handler.
 --

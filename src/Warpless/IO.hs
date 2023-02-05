@@ -1,4 +1,7 @@
-module Warpless.IO where
+module Warpless.IO
+  ( toBufIOWith,
+  )
+where
 
 import Control.Exception (mask_)
 import Data.ByteString.Builder (Builder)

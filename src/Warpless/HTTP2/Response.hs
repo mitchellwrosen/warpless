@@ -4,6 +4,7 @@ module Warpless.HTTP2.Response
 where
 
 import Data.ByteString.Builder qualified as BB
+import Data.Int (Int64)
 import Network.HTTP.Types qualified as H
 import Network.HTTP2.Server qualified as H2
 import Network.Wai hiding (responseBuilder, responseFile, responseStream)
@@ -66,9 +67,9 @@ responseFile st rsphdr _ _ _ _ _
 responseFile st rsphdr isHead path (Just fp) _ _ =
   return $ responseFile2XX st rsphdr isHead fileSpec
   where
-    !off' = fromIntegral $ filePartOffset fp
-    !bytes' = fromIntegral $ filePartByteCount fp
-    !fileSpec = H2.FileSpec path off' bytes'
+    !off' = filePartOffset fp
+    !bytes' = filePartByteCount fp
+    !fileSpec = H2.FileSpec path (fromIntegral @Integer @Int64 off') (fromIntegral @Integer @Int64 bytes')
 responseFile _ rsphdr isHead path Nothing ii reqhdr = do
   efinfo <- UnliftIO.tryIO $ getFileInfo ii path
   case efinfo of
@@ -79,9 +80,9 @@ responseFile _ rsphdr isHead path Nothing ii reqhdr = do
       case conditionalRequest finfo rsphdr rspidx reqidx of
         WithoutBody s -> return $ responseNoBody s rsphdr
         WithBody s rsphdr' off bytes -> do
-          let !off' = fromIntegral off
-              !bytes' = fromIntegral bytes
-              !fileSpec = H2.FileSpec path off' bytes'
+          let !off' = off
+              !bytes' = bytes
+              !fileSpec = H2.FileSpec path (fromIntegral @Integer @Int64 off') (fromIntegral @Integer @Int64 bytes')
           return $ responseFile2XX s rsphdr' isHead fileSpec
 
 ----------------------------------------------------------------

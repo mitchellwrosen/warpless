@@ -10,6 +10,7 @@ where
 import Control.Reaper
 import Network.HTTP.Date
 import System.Posix.Files
+import System.Posix.Types (FileOffset)
 import UnliftIO qualified (bracket, onException, throwIO)
 import Warpless.HashMap (HashMap)
 import Warpless.HashMap qualified as M
@@ -26,7 +27,7 @@ data FileInfo = FileInfo
     -- | Modification time in the GMT format
     fileInfoDate :: !ByteString
   }
-  deriving (Eq, Show)
+  deriving stock (Eq, Show)
 
 data Entry = Negative | Positive !FileInfo
 
@@ -46,11 +47,11 @@ getInfo path = do
     then do
       let time = epochTimeToHTTPDate $ modificationTime fs
           date = formatHTTPDate time
-          size = fromIntegral $ fileSize fs
+          size = fileSize fs
           info =
             FileInfo
               { fileInfoName = path,
-                fileInfoSize = size,
+                fileInfoSize = fromIntegral @FileOffset @Integer size,
                 fileInfoTime = time,
                 fileInfoDate = date
               }

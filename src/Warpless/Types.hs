@@ -1,8 +1,28 @@
-module Warpless.Types where
+module Warpless.Types
+  ( Port,
+    HeaderValue,
+    InvalidRequest (..),
+    ExceptionInsideResponseBody (..),
+    FileId (..),
+    SendFile,
+    WriteBuffer (..),
+    Connection (..),
+    setConnHTTP2,
+    InternalInfo (..),
+    Source,
+    mkSource,
+    readSource,
+    readSource',
+    leftoverSource,
+    readLeftoverSource,
+    Transport (..),
+    isTransportSecure,
+    isTransportQUIC,
+  )
+where
 
 import Data.ByteString qualified as S
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.Typeable (Typeable)
 import Network.Socket.BufferPool
 import System.Posix.Types (Fd)
 import System.TimeManager qualified as T
@@ -37,7 +57,7 @@ data InvalidRequest
     PayloadTooLarge
   | -- | Since 3.3.22
     RequestHeaderFieldsTooLarge
-  deriving (Eq, Typeable)
+  deriving stock (Eq)
 
 instance Show InvalidRequest where
   show (NotEnoughLines xs) = "Warp: Incomplete request headers, received: " ++ show xs
@@ -61,7 +81,7 @@ instance UnliftIO.Exception InvalidRequest
 -- Used to determine whether keeping the HTTP1.1 connection / HTTP2 stream alive is safe
 -- or irrecoverable.
 newtype ExceptionInsideResponseBody = ExceptionInsideResponseBody UnliftIO.SomeException
-  deriving (Show, Typeable)
+  deriving stock (Show)
 
 instance UnliftIO.Exception ExceptionInsideResponseBody
 
@@ -119,9 +139,6 @@ data Connection = Connection
     -- | Is this connection HTTP/2?
     connHTTP2 :: !(IORef Bool)
   }
-
-getConnHTTP2 :: Connection -> IO Bool
-getConnHTTP2 conn = readIORef (connHTTP2 conn)
 
 setConnHTTP2 :: Connection -> Bool -> IO ()
 setConnHTTP2 conn b = writeIORef (connHTTP2 conn) b
