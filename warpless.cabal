@@ -61,40 +61,52 @@ Library
     OverloadedStrings
     ViewPatterns
   default-language: GHC2021
-  Exposed-modules:   Warpless
-                     Warpless.Internal
-  Other-modules:     Warpless.Buffer
-                     Warpless.Conduit
-                     Warpless.Counter
-                     Warpless.Date
-                     Warpless.FdCache
-                     Warpless.File
-                     Warpless.FileInfoCache
-                     Warpless.HashMap
-                     Warpless.HTTP1
-                     Warpless.HTTP2
-                     Warpless.HTTP2.File
-                     Warpless.HTTP2.PushPromise
-                     Warpless.HTTP2.Request
-                     Warpless.HTTP2.Response
-                     Warpless.HTTP2.Types
-                     Warpless.Header
-                     Warpless.IO
-                     Warpless.Imports
-                     Warpless.MultiMap
-                     Warpless.PackInt
-                     Warpless.ReadInt
-                     Warpless.Request
-                     Warpless.RequestHeader
-                     Warpless.Response
-                     Warpless.ResponseHeader
-                     Warpless.Run
-                     Warpless.SendFile
-                     Warpless.Settings
-                     Warpless.Types
-                     Warpless.WithApplication
-                     Paths_warpless
-  Ghc-Options:       -Wall
+  exposed-modules:
+    Warpless
+  other-modules:
+    Paths_warpless
+    Warpless.Buffer
+    Warpless.Conduit
+    Warpless.Counter
+    Warpless.Date
+    Warpless.FdCache
+    Warpless.File
+    Warpless.FileInfoCache
+    Warpless.HashMap
+    Warpless.Internal
+    Warpless.HTTP1
+    Warpless.HTTP2
+    Warpless.HTTP2.File
+    Warpless.HTTP2.PushPromise
+    Warpless.HTTP2.Request
+    Warpless.HTTP2.Response
+    Warpless.HTTP2.Types
+    Warpless.Header
+    Warpless.IO
+    Warpless.Imports
+    Warpless.MultiMap
+    Warpless.PackInt
+    Warpless.ReadInt
+    Warpless.Request
+    Warpless.RequestHeader
+    Warpless.Response
+    Warpless.ResponseHeader
+    Warpless.Run
+    Warpless.SendFile
+    Warpless.Settings
+    Warpless.Types
+    Warpless.WithApplication
+  ghc-options:
+    -Weverything
+    -Wno-all-missed-specialisations
+    -Wno-implicit-prelude
+    -Wno-missed-specialisations
+    -Wno-missing-import-lists
+    -Wno-missing-kind-signatures
+    -Wno-missing-safe-haskell-mode
+    -Wno-prepositive-qualified-module
+    -Wno-safe
+    -Wno-unsafe
 
   if (os(linux) || os(freebsd) || os(darwin)) && flag(allow-sendfilefd)
       Cpp-Options:   -DSENDFILEFD
