@@ -31,108 +31,116 @@
 -- * call the 'pauseTimeout' function
 --
 -- For more information, see <https://github.com/yesodweb/wai/issues/351>.
---
---
-module Network.Wai.Handler.Warp (
-    -- * Run a Warp server
+module Network.Wai.Handler.Warp
+  ( -- * Run a Warp server
+
     -- | All of these automatically serve the same 'Application' over HTTP\/1,
     -- HTTP\/1.1, and HTTP\/2.
-    run
-  , runEnv
-  , runSettings
-  , runSettingsSocket
+    run,
+    runEnv,
+    runSettings,
+    runSettingsSocket,
+
     -- * Settings
-  , Settings
-  , defaultSettings
+    Settings,
+    defaultSettings,
+
     -- ** Setters
-  , setPort
-  , setHost
-  , setOnException
-  , setOnExceptionResponse
-  , setOnOpen
-  , setOnClose
-  , setTimeout
-  , setManager
-  , setFdCacheDuration
-  , setFileInfoCacheDuration
-  , setBeforeMainLoop
-  , setNoParsePath
-  , setInstallShutdownHandler
-  , setServerName
-  , setMaximumBodyFlush
-  , setFork
-  , setAccept
-  , setProxyProtocolNone
-  , setProxyProtocolRequired
-  , setProxyProtocolOptional
-  , setSlowlorisSize
-  , setHTTP2Disabled
-  , setLogger
-  , setServerPushLogger
-  , setGracefulShutdownTimeout
-  , setGracefulCloseTimeout1
-  , setGracefulCloseTimeout2
-  , setMaxTotalHeaderLength
-  , setAltSvc
-  , setMaxBuilderResponseBufferSize
+    setPort,
+    setHost,
+    setOnException,
+    setOnExceptionResponse,
+    setOnOpen,
+    setOnClose,
+    setTimeout,
+    setManager,
+    setFdCacheDuration,
+    setFileInfoCacheDuration,
+    setBeforeMainLoop,
+    setNoParsePath,
+    setInstallShutdownHandler,
+    setServerName,
+    setMaximumBodyFlush,
+    setFork,
+    setAccept,
+    setProxyProtocolNone,
+    setProxyProtocolRequired,
+    setProxyProtocolOptional,
+    setSlowlorisSize,
+    setHTTP2Disabled,
+    setLogger,
+    setServerPushLogger,
+    setGracefulShutdownTimeout,
+    setGracefulCloseTimeout1,
+    setGracefulCloseTimeout2,
+    setMaxTotalHeaderLength,
+    setAltSvc,
+    setMaxBuilderResponseBufferSize,
+
     -- ** Getters
-  , getPort
-  , getHost
-  , getOnOpen
-  , getOnClose
-  , getOnException
-  , getGracefulShutdownTimeout
-  , getGracefulCloseTimeout1
-  , getGracefulCloseTimeout2
+    getPort,
+    getHost,
+    getOnOpen,
+    getOnClose,
+    getOnException,
+    getGracefulShutdownTimeout,
+    getGracefulCloseTimeout1,
+    getGracefulCloseTimeout2,
+
     -- ** Exception handler
-  , defaultOnException
-  , defaultShouldDisplayException
+    defaultOnException,
+    defaultShouldDisplayException,
+
     -- ** Exception response handler
-  , defaultOnExceptionResponse
-  , exceptionResponseForDebug
+    defaultOnExceptionResponse,
+    exceptionResponseForDebug,
+
     -- * Data types
-  , HostPreference
-  , Port
-  , InvalidRequest (..)
+    HostPreference,
+    Port,
+    InvalidRequest (..),
+
     -- * Utilities
-  , pauseTimeout
-  , FileInfo(..)
-  , getFileInfo
-  , withApplication
-  , withApplicationSettings
-  , testWithApplication
-  , testWithApplicationSettings
-  , openFreePort
+    pauseTimeout,
+    FileInfo (..),
+    getFileInfo,
+    withApplication,
+    withApplicationSettings,
+    testWithApplication,
+    testWithApplicationSettings,
+    openFreePort,
+
     -- * Version
-  , warpVersion
+    warpVersion,
+
     -- * HTTP/2
+
     -- ** HTTP2 data
-  , HTTP2Data
-  , http2dataPushPromise
-  , http2dataTrailers
-  , defaultHTTP2Data
-  , getHTTP2Data
-  , setHTTP2Data
-  , modifyHTTP2Data
+    HTTP2Data,
+    http2dataPushPromise,
+    http2dataTrailers,
+    defaultHTTP2Data,
+    getHTTP2Data,
+    setHTTP2Data,
+    modifyHTTP2Data,
+
     -- ** Push promise
-  , PushPromise
-  , promisedPath
-  , promisedFile
-  , promisedResponseHeaders
-  , promisedWeight
-  , defaultPushPromise
-  ) where
+    PushPromise,
+    promisedPath,
+    promisedFile,
+    promisedResponseHeaders,
+    promisedWeight,
+    defaultPushPromise,
+  )
+where
 
-import UnliftIO.Exception (SomeException, throwIO)
 import Data.Streaming.Network (HostPreference)
-import qualified Data.Vault.Lazy as Vault
-import qualified Network.HTTP.Types as H
-import Network.Socket (Socket, SockAddr)
+import Data.Vault.Lazy qualified as Vault
+import Network.HTTP.Types qualified as H
+import Network.Socket (SockAddr, Socket)
 import Network.Wai (Request, Response, vault)
-import System.TimeManager
-
 import Network.Wai.Handler.Warp.FileInfoCache
-import Network.Wai.Handler.Warp.HTTP2.Request (getHTTP2Data, setHTTP2Data, modifyHTTP2Data)
+import Network.Wai.Handler.Warp.HTTP2.Request (getHTTP2Data, modifyHTTP2Data, setHTTP2Data)
 import Network.Wai.Handler.Warp.HTTP2.Types
 import Network.Wai.Handler.Warp.Imports
 import Network.Wai.Handler.Warp.Request
@@ -141,25 +149,27 @@ import Network.Wai.Handler.Warp.Run
 import Network.Wai.Handler.Warp.Settings
 import Network.Wai.Handler.Warp.Types hiding (getFileInfo)
 import Network.Wai.Handler.Warp.WithApplication
+import System.TimeManager
+import UnliftIO.Exception (SomeException, throwIO)
 
 -- | Port to listen on. Default value: 3000
 --
 -- Since 2.1.0
 setPort :: Port -> Settings -> Settings
-setPort x y = y { settingsPort = x }
+setPort x y = y {settingsPort = x}
 
 -- | Interface to bind to. Default value: HostIPv4
 --
 -- Since 2.1.0
 setHost :: HostPreference -> Settings -> Settings
-setHost x y = y { settingsHost = x }
+setHost x y = y {settingsHost = x}
 
 -- | What to do with exceptions thrown by either the application or server.
 -- Default: 'defaultOnException'
 --
 -- Since 2.1.0
 setOnException :: (Maybe Request -> SomeException -> IO ()) -> Settings -> Settings
-setOnException x y = y { settingsOnException = x }
+setOnException x y = y {settingsOnException = x}
 
 -- | A function to create a `Response` when an exception occurs.
 -- Default: 'defaultOnExceptionResponse'
@@ -176,7 +186,7 @@ setOnException x y = y { settingsOnException = x }
 --
 -- Since 2.1.0
 setOnExceptionResponse :: (SomeException -> Response) -> Settings -> Settings
-setOnExceptionResponse x y = y { settingsOnExceptionResponse = x }
+setOnExceptionResponse x y = y {settingsOnExceptionResponse = x}
 
 -- | What to do when a connection is opened. When 'False' is returned, the
 -- connection is closed immediately. Otherwise, the connection is going on.
@@ -184,13 +194,13 @@ setOnExceptionResponse x y = y { settingsOnExceptionResponse = x }
 --
 -- Since 2.1.0
 setOnOpen :: (SockAddr -> IO Bool) -> Settings -> Settings
-setOnOpen x y = y { settingsOnOpen = x }
+setOnOpen x y = y {settingsOnOpen = x}
 
 -- | What to do when a connection is closed. Default: do nothing.
 --
 -- Since 2.1.0
 setOnClose :: (SockAddr -> IO ()) -> Settings -> Settings
-setOnClose x y = y { settingsOnClose = x }
+setOnClose x y = y {settingsOnClose = x}
 
 -- | "Slow-loris" timeout lower-bound value in seconds.  Connections where
 -- network progress is made less frequently than this may be closed.  In
@@ -202,14 +212,14 @@ setOnClose x y = y { settingsOnClose = x }
 --
 -- Since 2.1.0
 setTimeout :: Int -> Settings -> Settings
-setTimeout x y = y { settingsTimeout = x }
+setTimeout x y = y {settingsTimeout = x}
 
 -- | Use an existing timeout manager instead of spawning a new one. If used,
 -- 'settingsTimeout' is ignored.
 --
 -- Since 2.1.0
 setManager :: Manager -> Settings -> Settings
-setManager x y = y { settingsManager = Just x }
+setManager x y = y {settingsManager = Just x}
 
 -- | Cache duration time of file descriptors in seconds. 0 means that the cache mechanism is not used.
 --
@@ -225,7 +235,7 @@ setManager x y = y { settingsManager = Just x }
 --
 -- Since 3.0.13
 setFdCacheDuration :: Int -> Settings -> Settings
-setFdCacheDuration x y = y { settingsFdCacheDuration = x }
+setFdCacheDuration x y = y {settingsFdCacheDuration = x}
 
 -- | Cache duration time of file information in seconds. 0 means that the cache mechanism is not used.
 --
@@ -239,7 +249,7 @@ setFdCacheDuration x y = y { settingsFdCacheDuration = x }
 --
 -- Default value: 0
 setFileInfoCacheDuration :: Int -> Settings -> Settings
-setFileInfoCacheDuration x y = y { settingsFileInfoCacheDuration = x }
+setFileInfoCacheDuration x y = y {settingsFileInfoCacheDuration = x}
 
 -- | Code to run after the listening socket is ready but before entering
 -- the main event loop. Useful for signaling to tests that they can start
@@ -249,7 +259,7 @@ setFileInfoCacheDuration x y = y { settingsFileInfoCacheDuration = x }
 --
 -- Since 2.1.0
 setBeforeMainLoop :: IO () -> Settings -> Settings
-setBeforeMainLoop x y = y { settingsBeforeMainLoop = x }
+setBeforeMainLoop x y = y {settingsBeforeMainLoop = x}
 
 -- | Perform no parsing on the rawPathInfo.
 --
@@ -259,7 +269,7 @@ setBeforeMainLoop x y = y { settingsBeforeMainLoop = x }
 --
 -- Since 2.1.0
 setNoParsePath :: Bool -> Settings -> Settings
-setNoParsePath x y = y { settingsNoParsePath = x }
+setNoParsePath x y = y {settingsNoParsePath = x}
 
 -- | Get the listening port.
 --
@@ -323,7 +333,7 @@ getGracefulShutdownTimeout = settingsGracefulShutdownTimeout
 --
 -- Since 3.0.1
 setInstallShutdownHandler :: (IO () -> IO ()) -> Settings -> Settings
-setInstallShutdownHandler x y = y { settingsInstallShutdownHandler = x }
+setInstallShutdownHandler x y = y {settingsInstallShutdownHandler = x}
 
 -- | Default server name to be sent as the \"Server:\" header
 --   if an application does not set one.
@@ -332,7 +342,7 @@ setInstallShutdownHandler x y = y { settingsInstallShutdownHandler = x }
 --
 -- Since 3.0.2
 setServerName :: ByteString -> Settings -> Settings
-setServerName x y = y { settingsServerName = x }
+setServerName x y = y {settingsServerName = x}
 
 -- | The maximum number of bytes to flush from an unconsumed request body.
 --
@@ -348,8 +358,8 @@ setServerName x y = y { settingsServerName = x }
 -- Since 3.0.3
 setMaximumBodyFlush :: Maybe Int -> Settings -> Settings
 setMaximumBodyFlush x y
-    | Just x' <- x, x' < 0 = error "setMaximumBodyFlush: must be positive"
-    | otherwise = y { settingsMaximumBodyFlush = x }
+  | Just x' <- x, x' < 0 = error "setMaximumBodyFlush: must be positive"
+  | otherwise = y {settingsMaximumBodyFlush = x}
 
 -- | Code to fork a new thread to accept a connection.
 --
@@ -360,7 +370,7 @@ setMaximumBodyFlush x y
 --
 -- Since 3.0.4
 setFork :: (((forall a. IO a -> IO a) -> IO ()) -> IO ()) -> Settings -> Settings
-setFork fork' s = s { settingsFork = fork' }
+setFork fork' s = s {settingsFork = fork'}
 
 -- | Code to accept a new connection.
 --
@@ -371,13 +381,13 @@ setFork fork' s = s { settingsFork = fork' }
 --
 -- Since 3.3.24
 setAccept :: (Socket -> IO (Socket, SockAddr)) -> Settings -> Settings
-setAccept accept' s = s { settingsAccept = accept' }
+setAccept accept' s = s {settingsAccept = accept'}
 
 -- | Do not use the PROXY protocol.
 --
 -- Since 3.0.5
 setProxyProtocolNone :: Settings -> Settings
-setProxyProtocolNone y = y { settingsProxyProtocol = ProxyProtocolNone }
+setProxyProtocolNone y = y {settingsProxyProtocol = ProxyProtocolNone}
 
 -- | Require PROXY header.
 --
@@ -393,7 +403,7 @@ setProxyProtocolNone y = y { settingsProxyProtocol = ProxyProtocolNone }
 --
 -- Since 3.0.5
 setProxyProtocolRequired :: Settings -> Settings
-setProxyProtocolRequired y = y { settingsProxyProtocol = ProxyProtocolRequired }
+setProxyProtocolRequired y = y {settingsProxyProtocol = ProxyProtocolRequired}
 
 -- | Use the PROXY header if it exists, but also accept
 -- connections without the header.  See 'setProxyProtocolRequired'.
@@ -409,35 +419,39 @@ setProxyProtocolRequired y = y { settingsProxyProtocol = ProxyProtocolRequired }
 --
 -- Since 3.0.5
 setProxyProtocolOptional :: Settings -> Settings
-setProxyProtocolOptional y = y { settingsProxyProtocol = ProxyProtocolOptional }
+setProxyProtocolOptional y = y {settingsProxyProtocol = ProxyProtocolOptional}
 
 -- | Size in bytes read to prevent Slowloris attacks. Default value: 2048
 --
 -- Since 3.1.2
 setSlowlorisSize :: Int -> Settings -> Settings
-setSlowlorisSize x y = y { settingsSlowlorisSize = x }
+setSlowlorisSize x y = y {settingsSlowlorisSize = x}
 
 -- | Disable HTTP2.
 --
 -- Since 3.1.7
 setHTTP2Disabled :: Settings -> Settings
-setHTTP2Disabled y = y { settingsHTTP2Enabled = False }
+setHTTP2Disabled y = y {settingsHTTP2Enabled = False}
 
 -- | Setting a log function.
 --
 -- Since 3.X.X
-setLogger :: (Request -> H.Status -> Maybe Integer -> IO ()) -- ^ request, status, maybe file-size
-          -> Settings
-          -> Settings
-setLogger lgr y = y { settingsLogger = lgr }
+setLogger ::
+  -- | request, status, maybe file-size
+  (Request -> H.Status -> Maybe Integer -> IO ()) ->
+  Settings ->
+  Settings
+setLogger lgr y = y {settingsLogger = lgr}
 
 -- | Setting a log function for HTTP/2 server push.
 --
 --   Since: 3.2.7
-setServerPushLogger :: (Request -> ByteString -> Integer -> IO ()) -- ^ request, path, file-size
-                    -> Settings
-                    -> Settings
-setServerPushLogger lgr y = y { settingsServerPushLogger = lgr }
+setServerPushLogger ::
+  -- | request, path, file-size
+  (Request -> ByteString -> Integer -> IO ()) ->
+  Settings ->
+  Settings
+setServerPushLogger lgr y = y {settingsServerPushLogger = lgr}
 
 -- | Set the graceful shutdown timeout. A timeout of `Nothing' will
 -- wait indefinitely, and a number, if provided, will be treated as seconds
@@ -448,29 +462,32 @@ setServerPushLogger lgr y = y { settingsServerPushLogger = lgr }
 -- response to a UNIX signal.
 --
 -- Since 3.2.8
-setGracefulShutdownTimeout :: Maybe Int
-                           -> Settings -> Settings
-setGracefulShutdownTimeout time y = y { settingsGracefulShutdownTimeout = time }
+setGracefulShutdownTimeout ::
+  Maybe Int ->
+  Settings ->
+  Settings
+setGracefulShutdownTimeout time y = y {settingsGracefulShutdownTimeout = time}
 
 -- | Set the maximum header size that Warp will tolerate when using HTTP/1.x.
 --
 -- Since 3.3.8
 setMaxTotalHeaderLength :: Int -> Settings -> Settings
-setMaxTotalHeaderLength maxTotalHeaderLength settings = settings
-  { settingsMaxTotalHeaderLength = maxTotalHeaderLength }
-
+setMaxTotalHeaderLength maxTotalHeaderLength settings =
+  settings
+    { settingsMaxTotalHeaderLength = maxTotalHeaderLength
+    }
 
 -- | Setting the header value of Alternative Services (AltSvc:).
 --
 -- Since 3.3.11
 setAltSvc :: ByteString -> Settings -> Settings
-setAltSvc altsvc settings = settings { settingsAltSvc = Just altsvc }
+setAltSvc altsvc settings = settings {settingsAltSvc = Just altsvc}
 
 -- | Set the maximum buffer size for sending `Builder` responses.
 --
 -- Since 3.3.22
 setMaxBuilderResponseBufferSize :: Int -> Settings -> Settings
-setMaxBuilderResponseBufferSize maxRspBufSize settings = settings { settingsMaxBuilderResponseBufferSize = maxRspBufSize }
+setMaxBuilderResponseBufferSize maxRspBufSize settings = settings {settingsMaxBuilderResponseBufferSize = maxRspBufSize}
 
 -- | Explicitly pause the slowloris timeout.
 --
@@ -506,7 +523,7 @@ getFileInfo = fromMaybe (\_ -> throwIO (userError "getFileInfo")) . Vault.lookup
 --
 -- Since 3.3.5
 setGracefulCloseTimeout1 :: Int -> Settings -> Settings
-setGracefulCloseTimeout1 x y = y { settingsGracefulCloseTimeout1 = x }
+setGracefulCloseTimeout1 x y = y {settingsGracefulCloseTimeout1 = x}
 
 -- | A timeout to limit the time (in milliseconds) waiting for
 --   FIN for HTTP/1.x. 0 means uses immediate close.
@@ -521,7 +538,7 @@ getGracefulCloseTimeout1 = settingsGracefulCloseTimeout1
 --
 -- Since 3.3.5
 setGracefulCloseTimeout2 :: Int -> Settings -> Settings
-setGracefulCloseTimeout2 x y = y { settingsGracefulCloseTimeout2 = x }
+setGracefulCloseTimeout2 x y = y {settingsGracefulCloseTimeout2 = x}
 
 -- | A timeout to limit the time (in milliseconds) waiting for
 --   FIN for HTTP/2. 0 means uses immediate close.

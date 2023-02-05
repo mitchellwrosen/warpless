@@ -1,18 +1,18 @@
-module Network.Wai.Handler.Warp.Buffer (
-    createWriteBuffer
-  , allocateBuffer
-  , freeBuffer
-  , toBuilderBuffer
-  , bufferIO
-  ) where
+module Network.Wai.Handler.Warp.Buffer
+  ( createWriteBuffer,
+    allocateBuffer,
+    freeBuffer,
+    toBuilderBuffer,
+    bufferIO,
+  )
+where
 
 import Data.IORef (IORef, readIORef)
-import qualified Data.Streaming.ByteString.Builder.Buffer as B (Buffer (..))
+import Data.Streaming.ByteString.Builder.Buffer qualified as B (Buffer (..))
 import Foreign.ForeignPtr
-import Foreign.Marshal.Alloc (mallocBytes, free)
+import Foreign.Marshal.Alloc (free, mallocBytes)
 import Foreign.Ptr (plusPtr)
 import Network.Socket.BufferPool
-
 import Network.Wai.Handler.Warp.Imports
 import Network.Wai.Handler.Warp.Types
 
@@ -47,13 +47,13 @@ freeBuffer = free
 
 toBuilderBuffer :: IORef WriteBuffer -> IO B.Buffer
 toBuilderBuffer writeBufferRef = do
-    writeBuffer <- readIORef writeBufferRef
-    let ptr = bufBuffer writeBuffer
-        size = bufSize writeBuffer
-    fptr <- newForeignPtr_ ptr
-    return $ B.Buffer fptr ptr ptr (ptr `plusPtr` size)
+  writeBuffer <- readIORef writeBufferRef
+  let ptr = bufBuffer writeBuffer
+      size = bufSize writeBuffer
+  fptr <- newForeignPtr_ ptr
+  return $ B.Buffer fptr ptr ptr (ptr `plusPtr` size)
 
 bufferIO :: Buffer -> Int -> (ByteString -> IO ()) -> IO ()
 bufferIO ptr siz io = do
-    fptr <- newForeignPtr_ ptr
-    io $ PS fptr 0 siz
+  fptr <- newForeignPtr_ ptr
+  io $ PS fptr 0 siz

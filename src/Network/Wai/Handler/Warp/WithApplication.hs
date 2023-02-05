@@ -1,22 +1,23 @@
-module Network.Wai.Handler.Warp.WithApplication (
-  withApplication,
-  withApplicationSettings,
-  testWithApplication,
-  testWithApplicationSettings,
-  openFreePort,
-  withFreePort,
-) where
+module Network.Wai.Handler.Warp.WithApplication
+  ( withApplication,
+    withApplicationSettings,
+    testWithApplication,
+    testWithApplicationSettings,
+    openFreePort,
+    withFreePort,
+  )
+where
 
-import           Control.Concurrent
-import qualified UnliftIO
-import           UnliftIO.Async
-import           Control.Monad (when)
-import           Data.Streaming.Network (bindRandomPortTCP)
-import           Network.Socket
-import           Network.Wai
-import           Network.Wai.Handler.Warp.Run
-import           Network.Wai.Handler.Warp.Settings
-import           Network.Wai.Handler.Warp.Types
+import Control.Concurrent
+import Control.Monad (when)
+import Data.Streaming.Network (bindRandomPortTCP)
+import Network.Socket
+import Network.Wai
+import Network.Wai.Handler.Warp.Run
+import Network.Wai.Handler.Warp.Settings
+import Network.Wai.Handler.Warp.Types
+import UnliftIO qualified
+import UnliftIO.Async
 
 -- | Runs the given 'Application' on a free port. Passes the port to the given
 -- operation and executes it, while the 'Application' is running. Shuts down the
@@ -33,16 +34,17 @@ withApplication = withApplicationSettings defaultSettings
 withApplicationSettings :: Settings -> IO Application -> (Port -> IO a) -> IO a
 withApplicationSettings settings' mkApp action = do
   app <- mkApp
-  withFreePort $ \ (port, sock) -> do
+  withFreePort $ \(port, sock) -> do
     started <- mkWaiter
     let settings =
-          settings' {
-            settingsBeforeMainLoop
-              = notify started () >> settingsBeforeMainLoop settings'
-          }
-    result <- race
-      (runSettingsSocket settings sock app)
-      (waitFor started >> action port)
+          settings'
+            { settingsBeforeMainLoop =
+                notify started () >> settingsBeforeMainLoop settings'
+            }
+    result <-
+      race
+        (runSettingsSocket settings sock app)
+        (waitFor started >> action port)
     case result of
       Left () -> UnliftIO.throwString "Unexpected: runSettingsSocket exited"
       Right x -> return x
@@ -71,26 +73,26 @@ testWithApplicationSettings settings mkApp action = do
   callingThread <- myThreadId
   app <- mkApp
   let wrappedApp request respond =
-        app request respond `UnliftIO.catchAny` \ e -> do
+        app request respond `UnliftIO.catchAny` \e -> do
           when
             (defaultShouldDisplayException e)
             (throwTo callingThread e)
           UnliftIO.throwIO e
   withApplicationSettings settings (return wrappedApp) action
 
-data Waiter a
-  = Waiter {
-    notify :: !(a -> IO ()),
+data Waiter a = Waiter
+  { notify :: !(a -> IO ()),
     waitFor :: !(IO a)
   }
 
 mkWaiter :: IO (Waiter a)
 mkWaiter = do
   mvar <- newEmptyMVar
-  return Waiter {
-    notify = putMVar mvar,
-    waitFor = readMVar mvar
-  }
+  return
+    Waiter
+      { notify = putMVar mvar,
+        waitFor = readMVar mvar
+      }
 
 -- | Opens a socket on a free port and returns both port and socket.
 --

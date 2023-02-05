@@ -1,52 +1,57 @@
-module Network.Wai.Handler.Warp.File (
-    RspFileInfo(..)
-  , conditionalRequest
-  , addContentHeadersForFilePart
-  , H.parseByteRanges
-  ) where
+module Network.Wai.Handler.Warp.File
+  ( RspFileInfo (..),
+    conditionalRequest,
+    addContentHeadersForFilePart,
+    H.parseByteRanges,
+  )
+where
 
 import Data.Array ((!))
-import qualified Data.ByteString.Char8 as C8 (pack)
+import Data.ByteString.Char8 qualified as C8 (pack)
 import Network.HTTP.Date
-import qualified Network.HTTP.Types as H
-import qualified Network.HTTP.Types.Header as H
+import Network.HTTP.Types qualified as H
+import Network.HTTP.Types.Header qualified as H
 import Network.Wai
-
-import qualified Network.Wai.Handler.Warp.FileInfoCache as I
+import Network.Wai.Handler.Warp.FileInfoCache qualified as I
 import Network.Wai.Handler.Warp.Header
 import Network.Wai.Handler.Warp.Imports
 import Network.Wai.Handler.Warp.PackInt
-
 
 -- $setup
 -- >>> import Test.QuickCheck
 
 ----------------------------------------------------------------
 
-data RspFileInfo = WithoutBody !H.Status
-                 | WithBody !H.Status !H.ResponseHeaders !Integer !Integer
-                 deriving (Eq,Show)
+data RspFileInfo
+  = WithoutBody !H.Status
+  | WithBody !H.Status !H.ResponseHeaders !Integer !Integer
+  deriving (Eq, Show)
 
 ----------------------------------------------------------------
 
-conditionalRequest :: I.FileInfo
-                   -> H.ResponseHeaders
-                   -> IndexedHeader -- ^ Response
-                   -> IndexedHeader -- ^ Request
-                   -> RspFileInfo
+conditionalRequest ::
+  I.FileInfo ->
+  H.ResponseHeaders ->
+  -- | Response
+  IndexedHeader ->
+  -- | Request
+  IndexedHeader ->
+  RspFileInfo
 conditionalRequest finfo hs0 rspidx reqidx = case condition of
-    nobody@(WithoutBody _) -> nobody
-    WithBody s _ off len   -> let !hs1 = addContentHeaders hs0 off len size
-                                  !hasLM = isJust $ rspidx ! fromEnum ResLastModified
-                                  !hs = [ (H.hLastModified,date) | not hasLM ] ++ hs1
-                              in WithBody s hs off len
+  nobody@(WithoutBody _) -> nobody
+  WithBody s _ off len ->
+    let !hs1 = addContentHeaders hs0 off len size
+        !hasLM = isJust $ rspidx ! fromEnum ResLastModified
+        !hs = [(H.hLastModified, date) | not hasLM] ++ hs1
+     in WithBody s hs off len
   where
     !mtime = I.fileInfoTime finfo
-    !size  = I.fileInfoSize finfo
-    !date  = I.fileInfoDate finfo
-    !mcondition = ifmodified    reqidx size mtime
-              <|> ifunmodified  reqidx size mtime
-              <|> ifrange       reqidx size mtime
+    !size = I.fileInfoSize finfo
+    !date = I.fileInfoDate finfo
+    !mcondition =
+      ifmodified reqidx size mtime
+        <|> ifunmodified reqidx size mtime
+        <|> ifrange reqidx size mtime
     !condition = fromMaybe (unconditional reqidx size) mcondition
 
 ----------------------------------------------------------------
@@ -64,49 +69,53 @@ ifRange reqidx = reqidx ! fromEnum ReqIfRange >>= parseHTTPDate
 
 ifmodified :: IndexedHeader -> Integer -> HTTPDate -> Maybe RspFileInfo
 ifmodified reqidx size mtime = do
-    date <- ifModifiedSince reqidx
-    return $ if date /= mtime
-             then unconditional reqidx size
-             else WithoutBody H.notModified304
+  date <- ifModifiedSince reqidx
+  return $
+    if date /= mtime
+      then unconditional reqidx size
+      else WithoutBody H.notModified304
 
 ifunmodified :: IndexedHeader -> Integer -> HTTPDate -> Maybe RspFileInfo
 ifunmodified reqidx size mtime = do
-    date <- ifUnmodifiedSince reqidx
-    return $ if date == mtime
-             then unconditional reqidx size
-             else WithoutBody H.preconditionFailed412
+  date <- ifUnmodifiedSince reqidx
+  return $
+    if date == mtime
+      then unconditional reqidx size
+      else WithoutBody H.preconditionFailed412
 
 ifrange :: IndexedHeader -> Integer -> HTTPDate -> Maybe RspFileInfo
 ifrange reqidx size mtime = do
-    date <- ifRange reqidx
-    rng  <- reqidx ! fromEnum ReqRange
-    return $ if date == mtime
-             then parseRange rng size
-             else WithBody H.ok200 [] 0 size
+  date <- ifRange reqidx
+  rng <- reqidx ! fromEnum ReqRange
+  return $
+    if date == mtime
+      then parseRange rng size
+      else WithBody H.ok200 [] 0 size
 
 unconditional :: IndexedHeader -> Integer -> RspFileInfo
 unconditional reqidx size = case reqidx ! fromEnum ReqRange of
-    Nothing  -> WithBody H.ok200 [] 0 size
-    Just rng -> parseRange rng size
+  Nothing -> WithBody H.ok200 [] 0 size
+  Just rng -> parseRange rng size
 
 ----------------------------------------------------------------
 
 parseRange :: ByteString -> Integer -> RspFileInfo
 parseRange rng size = case H.parseByteRanges rng of
-    Nothing    -> WithoutBody H.requestedRangeNotSatisfiable416
-    Just []    -> WithoutBody H.requestedRangeNotSatisfiable416
-    Just (r:_) -> let (!beg, !end) = checkRange r size
-                      !len = end - beg + 1
-                      s = if beg == 0 && end == size - 1 then
-                              H.ok200
-                            else
-                              H.partialContent206
-                  in WithBody s [] beg len
+  Nothing -> WithoutBody H.requestedRangeNotSatisfiable416
+  Just [] -> WithoutBody H.requestedRangeNotSatisfiable416
+  Just (r : _) ->
+    let (!beg, !end) = checkRange r size
+        !len = end - beg + 1
+        s =
+          if beg == 0 && end == size - 1
+            then H.ok200
+            else H.partialContent206
+     in WithBody s [] beg len
 
 checkRange :: H.ByteRange -> Integer -> (Integer, Integer)
-checkRange (H.ByteRangeFrom   beg)     size = (beg, size - 1)
-checkRange (H.ByteRangeFromTo beg end) size = (beg,  min (size - 1) end)
-checkRange (H.ByteRangeSuffix count)   size = (max 0 (size - count), size - 1)
+checkRange (H.ByteRangeFrom beg) size = (beg, size - 1)
+checkRange (H.ByteRangeFromTo beg end) size = (beg, min (size - 1) end)
+checkRange (H.ByteRangeSuffix count) size = (max 0 (size - count), size - 1)
 
 ----------------------------------------------------------------
 
@@ -115,24 +124,36 @@ checkRange (H.ByteRangeSuffix count)   size = (max 0 (size - count), size - 1)
 contentRangeHeader :: Integer -> Integer -> Integer -> H.Header
 contentRangeHeader beg end total = (H.hContentRange, range)
   where
-    range = C8.pack
+    range =
+      C8.pack
       -- building with ShowS
-      $ 'b' : 'y': 't' : 'e' : 's' : ' '
-      : (if beg > end then ('*':) else
-          showInt beg
-          . ('-' :)
-          . showInt end)
-      ( '/'
-      : showInt total "")
+      $
+        'b' :
+        'y' :
+        't' :
+        'e' :
+        's' :
+        ' ' :
+        ( if beg > end
+            then ('*' :)
+            else
+              showInt beg
+                . ('-' :)
+                . showInt end
+        )
+          ( '/' :
+            showInt total ""
+          )
 
 addContentHeaders :: H.ResponseHeaders -> Integer -> Integer -> Integer -> H.ResponseHeaders
 addContentHeaders hs off len size
   | len == size = hs'
-  | otherwise   = let !ctrng = contentRangeHeader off (off + len - 1) size
-                  in ctrng:hs'
+  | otherwise =
+      let !ctrng = contentRangeHeader off (off + len - 1) size
+       in ctrng : hs'
   where
     !lengthBS = packIntegral len
-    !hs' = (H.hContentLength, lengthBS) : (H.hAcceptRanges,"bytes") : hs
+    !hs' = (H.hContentLength, lengthBS) : (H.hAcceptRanges, "bytes") : hs
 
 -- |
 --

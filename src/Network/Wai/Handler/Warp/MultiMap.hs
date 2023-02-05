@@ -1,19 +1,20 @@
-module Network.Wai.Handler.Warp.MultiMap (
-    MultiMap
-  , isEmpty
-  , empty
-  , singleton
-  , insert
-  , Network.Wai.Handler.Warp.MultiMap.lookup
-  , pruneWith
-  , toList
-  , merge
-  ) where
+module Network.Wai.Handler.Warp.MultiMap
+  ( MultiMap,
+    isEmpty,
+    empty,
+    singleton,
+    insert,
+    Network.Wai.Handler.Warp.MultiMap.lookup,
+    pruneWith,
+    toList,
+    merge,
+  )
+where
 
 import Control.Monad (filterM)
 import Data.Hashable (hash)
 import Data.IntMap.Strict (IntMap)
-import qualified Data.IntMap.Strict as I
+import Data.IntMap.Strict qualified as I
 import Data.Semigroup
 import Prelude -- Silence redundant import warnings
 
@@ -28,7 +29,7 @@ import Prelude -- Silence redundant import warnings
 --   Because only positive entries are stored,
 --   Malicious attack cannot cause the inner list to blow up.
 --   So, lists are good enough.
-newtype MultiMap v = MultiMap (IntMap [(FilePath,v)])
+newtype MultiMap v = MultiMap (IntMap [(FilePath, v)])
 
 ----------------------------------------------------------------
 
@@ -44,43 +45,45 @@ isEmpty (MultiMap mm) = I.null mm
 
 -- | O(1)
 singleton :: FilePath -> v -> MultiMap v
-singleton path v = MultiMap $ I.singleton (hash path) [(path,v)]
+singleton path v = MultiMap $ I.singleton (hash path) [(path, v)]
 
 ----------------------------------------------------------------
 
 -- | O(M) where M is the number of entries per file
 lookup :: FilePath -> MultiMap v -> Maybe v
 lookup path (MultiMap mm) = case I.lookup (hash path) mm of
-    Nothing -> Nothing
-    Just s  -> Prelude.lookup path s
+  Nothing -> Nothing
+  Just s -> Prelude.lookup path s
 
 ----------------------------------------------------------------
 
 -- | O(log n)
 insert :: FilePath -> v -> MultiMap v -> MultiMap v
-insert path v (MultiMap mm) = MultiMap
-  $ I.insertWith (<>) (hash path) [(path,v)] mm
+insert path v (MultiMap mm) =
+  MultiMap $
+    I.insertWith (<>) (hash path) [(path, v)] mm
 
 ----------------------------------------------------------------
 
 -- | O(n)
-toList :: MultiMap v -> [(FilePath,v)]
+toList :: MultiMap v -> [(FilePath, v)]
 toList (MultiMap mm) = concatMap snd $ I.toAscList mm
 
 ----------------------------------------------------------------
 
 -- | O(n)
-pruneWith :: MultiMap v
-          -> ((FilePath,v) -> IO Bool)
-          -> IO (MultiMap v)
-pruneWith (MultiMap mm) action
-  = I.foldrWithKey go (pure . MultiMap) mm I.empty
+pruneWith ::
+  MultiMap v ->
+  ((FilePath, v) -> IO Bool) ->
+  IO (MultiMap v)
+pruneWith (MultiMap mm) action =
+  I.foldrWithKey go (pure . MultiMap) mm I.empty
   where
     go h s cont acc = do
       rs <- filterM action s
       case rs of
         [] -> cont acc
-        _  -> cont $! I.insert h rs acc
+        _ -> cont $! I.insert h rs acc
 
 ----------------------------------------------------------------
 

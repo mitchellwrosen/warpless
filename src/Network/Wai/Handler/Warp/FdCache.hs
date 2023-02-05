@@ -1,20 +1,20 @@
 -- | File descriptor cache to avoid locks in kernel.
+module Network.Wai.Handler.Warp.FdCache
+  ( withFdCache,
+    Fd,
+    Refresh,
+    openFile,
+    closeFile,
+    setFileCloseOnExec,
+  )
+where
 
-module Network.Wai.Handler.Warp.FdCache (
-    withFdCache
-  , Fd
-  , Refresh
-  , openFile
-  , closeFile
-  , setFileCloseOnExec
-  ) where
-
-import UnliftIO.Exception (bracket)
 import Control.Reaper
 import Data.IORef
 import Network.Wai.Handler.Warp.MultiMap as MM
-import System.Posix.IO (openFd, OpenFileFlags(..), defaultFileFlags, OpenMode(ReadOnly), closeFd, FdOption(CloseOnExec), setFdOption)
+import System.Posix.IO (FdOption (CloseOnExec), OpenFileFlags (..), OpenMode (ReadOnly), closeFd, defaultFileFlags, openFd, setFdOption)
 import System.Posix.Types (Fd)
+import UnliftIO.Exception (bracket)
 
 ----------------------------------------------------------------
 
@@ -29,10 +29,12 @@ getFdNothing _ = return (Nothing, return ())
 -- | Creating 'MutableFdCache' and executing the action in the second
 --   argument. The first argument is a cache duration in second.
 withFdCache :: Int -> ((FilePath -> IO (Maybe Fd, Refresh)) -> IO a) -> IO a
-withFdCache 0        action = action getFdNothing
-withFdCache duration action = bracket (initialize duration)
-                                      terminate
-                                      (action . getFd)
+withFdCache 0 action = action getFdNothing
+withFdCache duration action =
+  bracket
+    (initialize duration)
+    terminate
+    (action . getFd)
 
 ----------------------------------------------------------------
 
@@ -58,9 +60,9 @@ data FdEntry = FdEntry !Fd !MutableStatus
 
 openFile :: FilePath -> IO Fd
 openFile path = do
-    fd <- openFd path ReadOnly Nothing defaultFileFlags{nonBlock=False}
-    setFileCloseOnExec fd
-    return fd
+  fd <- openFd path ReadOnly Nothing defaultFileFlags {nonBlock = False}
+  setFileCloseOnExec fd
+  return fd
 
 closeFile :: Fd -> IO ()
 closeFile = closeFd
@@ -76,7 +78,7 @@ setFileCloseOnExec fd = setFdOption fd CloseOnExec True
 type FdCache = MultiMap FdEntry
 
 -- | Mutable Fd cacher.
-newtype MutableFdCache = MutableFdCache (Reaper FdCache (FilePath,FdEntry))
+newtype MutableFdCache = MutableFdCache (Reaper FdCache (FilePath, FdEntry))
 
 fdCache :: MutableFdCache -> IO FdCache
 fdCache (MutableFdCache reaper) = reaperRead reaper
@@ -90,30 +92,31 @@ look mfc path = MM.lookup path <$> fdCache mfc
 initialize :: Int -> IO MutableFdCache
 initialize duration = MutableFdCache <$> mkReaper settings
   where
-    settings = defaultReaperSettings {
-        reaperAction = clean
-      , reaperDelay = duration
-      , reaperCons = uncurry insert
-      , reaperNull = isEmpty
-      , reaperEmpty = empty
-      }
+    settings =
+      defaultReaperSettings
+        { reaperAction = clean,
+          reaperDelay = duration,
+          reaperCons = uncurry insert,
+          reaperNull = isEmpty,
+          reaperEmpty = empty
+        }
 
 clean :: FdCache -> IO (FdCache -> FdCache)
 clean old = do
-    new <- pruneWith old prune
-    return $ merge new
+  new <- pruneWith old prune
+  return $ merge new
   where
-    prune (_,FdEntry fd mst) = status mst >>= act
+    prune (_, FdEntry fd mst) = status mst >>= act
       where
-        act Active   = inactive mst >> return True
-        act Inactive = closeFd fd   >> return False
+        act Active = inactive mst >> return True
+        act Inactive = closeFd fd >> return False
 
 ----------------------------------------------------------------
 
 terminate :: MutableFdCache -> IO ()
 terminate (MutableFdCache reaper) = do
-    !t <- reaperStop reaper
-    mapM_ (closeIt . snd) $ toList t
+  !t <- reaperStop reaper
+  mapM_ (closeIt . snd) $ toList t
   where
     closeIt (FdEntry fd _) = closeFd fd
 
@@ -124,9 +127,9 @@ getFd :: MutableFdCache -> FilePath -> IO (Maybe Fd, Refresh)
 getFd mfc@(MutableFdCache reaper) path = look mfc path >>= get
   where
     get Nothing = do
-        ent@(FdEntry fd mst) <- newFdEntry path
-        reaperAdd reaper (path,ent)
-        return (Just fd, refresh mst)
+      ent@(FdEntry fd mst) <- newFdEntry path
+      reaperAdd reaper (path, ent)
+      return (Just fd, refresh mst)
     get (Just (FdEntry fd mst)) = do
-        refresh mst
-        return (Just fd, refresh mst)
+      refresh mst
+      return (Just fd, refresh mst)

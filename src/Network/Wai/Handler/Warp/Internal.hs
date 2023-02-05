@@ -1,42 +1,51 @@
 {-# OPTIONS_GHC -fno-warn-deprecations #-}
 
-module Network.Wai.Handler.Warp.Internal (
-    -- * Settings
-    Settings (..)
-  , ProxyProtocol(..)
+module Network.Wai.Handler.Warp.Internal
+  ( -- * Settings
+    Settings (..),
+    ProxyProtocol (..),
+
     -- * Low level run functions
-  , runSettingsConnection
-  , runSettingsConnectionMaker
-  , runSettingsConnectionMakerSecure
-  , Transport (..)
+    runSettingsConnection,
+    runSettingsConnectionMaker,
+    runSettingsConnectionMakerSecure,
+    Transport (..),
+
     -- * Connection
-  , Connection (..)
-  , socketConnection
+    Connection (..),
+    socketConnection,
+
     -- ** Receive
-  , Recv
-  , RecvBuf
-  , makePlainReceiveN
+    Recv,
+    RecvBuf,
+    makePlainReceiveN,
+
     -- ** Buffer
-  , Buffer
-  , BufSize
-  , WriteBuffer(..)
-  , createWriteBuffer
-  , allocateBuffer
-  , freeBuffer
-  , copy
+    Buffer,
+    BufSize,
+    WriteBuffer (..),
+    createWriteBuffer,
+    allocateBuffer,
+    freeBuffer,
+    copy,
+
     -- ** Sendfile
-  , FileId (..)
-  , SendFile
-  , sendFile
-  , readSendFile
+    FileId (..),
+    SendFile,
+    sendFile,
+    readSendFile,
+
     -- * Version
-  , warpVersion
+    warpVersion,
+
     -- * Data types
-  , InternalInfo (..)
-  , HeaderValue
-  , IndexedHeader
-  , requestMaxIndex
+    InternalInfo (..),
+    HeaderValue,
+    IndexedHeader,
+    requestMaxIndex,
+
     -- * Time out manager
+
     -- |
     --
     -- In order to provide slowloris protection, Warp provides timeout handlers. We
@@ -54,28 +63,33 @@ module Network.Wai.Handler.Warp.Internal (
     --   resumed as soon as we return from user code.
     --
     -- * Every time data is successfully sent to the client, the timeout is tickled.
-  , module System.TimeManager
+    module System.TimeManager,
+
     -- * File descriptor cache
-  , module Network.Wai.Handler.Warp.FdCache
+    module Network.Wai.Handler.Warp.FdCache,
+
     -- * File information cache
-  , module Network.Wai.Handler.Warp.FileInfoCache
+    module Network.Wai.Handler.Warp.FileInfoCache,
+
     -- * Date
-  , module Network.Wai.Handler.Warp.Date
+    module Network.Wai.Handler.Warp.Date,
+
     -- * Request and response
-  , Source
-  , recvRequest
-  , sendResponse
+    Source,
+    recvRequest,
+    sendResponse,
+
     -- * Platform dependent helper functions
-  , setSocketCloseOnExec
+    setSocketCloseOnExec,
+
     -- * Misc
-  , http2server
-  , withII
-  , pReadMaker
-  ) where
+    http2server,
+    withII,
+    pReadMaker,
+  )
+where
 
 import Network.Socket.BufferPool
-import System.TimeManager
-
 import Network.Wai.Handler.Warp.Buffer
 import Network.Wai.Handler.Warp.Date
 import Network.Wai.Handler.Warp.FdCache
@@ -89,3 +103,5 @@ import Network.Wai.Handler.Warp.Run
 import Network.Wai.Handler.Warp.SendFile
 import Network.Wai.Handler.Warp.Settings
 import Network.Wai.Handler.Warp.Types
+import System.TimeManager
+

@@ -1,27 +1,26 @@
 {-# LANGUAGE CPP #-}
 
-module Network.Wai.Handler.Warp.SendFile (
-    sendFile
-  , readSendFile
-  , packHeader -- for testing
-  , positionRead
-  ) where
+module Network.Wai.Handler.Warp.SendFile
+  ( sendFile,
+    readSendFile,
+    packHeader, -- for testing
+    positionRead,
+  )
+where
 
-import qualified Data.ByteString as BS
-import Network.Socket (Socket)
-import Network.Socket.BufferPool
-
-import qualified UnliftIO
+import Data.ByteString qualified as BS
 import Foreign.C.Error (throwErrno)
 import Foreign.C.Types
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
 import Network.Sendfile
-import Network.Wai.Handler.Warp.FdCache (openFile, closeFile)
-import System.Posix.Types
-
+import Network.Socket (Socket)
+import Network.Socket.BufferPool
 import Network.Wai.Handler.Warp.Buffer
+import Network.Wai.Handler.Warp.FdCache (closeFile, openFile)
 import Network.Wai.Handler.Warp.Imports
 import Network.Wai.Handler.Warp.Types
+import System.Posix.Types
+import UnliftIO qualified
 
 ----------------------------------------------------------------
 
@@ -45,23 +44,27 @@ sendFile _ = readSendFile
 
 ----------------------------------------------------------------
 
-packHeader :: Buffer -> BufSize -> (ByteString -> IO ())
-           -> IO () -> [ByteString]
-           -> Int
-           -> IO Int
-packHeader _   _   _    _    [] n = return n
-packHeader buf siz send hook (bs:bss) n
+packHeader ::
+  Buffer ->
+  BufSize ->
+  (ByteString -> IO ()) ->
+  IO () ->
+  [ByteString] ->
+  Int ->
+  IO Int
+packHeader _ _ _ _ [] n = return n
+packHeader buf siz send hook (bs : bss) n
   | len < room = do
       let dst = buf `plusPtr` n
       void $ copy dst bs
       packHeader buf siz send hook bss (n + len)
-  | otherwise  = do
+  | otherwise = do
       let dst = buf `plusPtr` n
           (bs1, bs2) = BS.splitAt room bs
       void $ copy dst bs1
       bufferIO buf siz send
       hook
-      packHeader buf siz send hook (bs2:bss) 0
+      packHeader buf siz send hook (bs2 : bss) 0
   where
     len = BS.length bs
     room = siz - n
@@ -69,7 +72,7 @@ packHeader buf siz send hook (bs:bss) n
 mini :: Int -> Integer -> Int
 mini i n
   | fromIntegral i < n = i
-  | otherwise          = fromIntegral n
+  | otherwise = fromIntegral n
 
 -- | Function to send a file based on pread()\/send() for Unix.
 --   This makes use of the file descriptor cache.
@@ -90,13 +93,13 @@ readSendFile buf siz send fid off0 len0 hook headers =
   where
     path = fileIdPath fid
     setup = case fileIdFd fid of
-       Just fd -> return fd
-       Nothing -> openFile path
+      Just fd -> return fd
+      Nothing -> openFile path
     teardown fd = case fileIdFd fid of
-       Just _  -> return ()
-       Nothing -> closeFile fd
+      Just _ -> return ()
+      Nothing -> closeFile fd
     loop fd len off
-      | len <= 0  = return ()
+      | len <= 0 = return ()
       | otherwise = do
           n <- positionRead fd buf (mini siz len) off
           bufferIO buf n send
@@ -106,9 +109,9 @@ readSendFile buf siz send fid off0 len0 hook headers =
 
 positionRead :: Fd -> Buffer -> BufSize -> Integer -> IO Int
 positionRead fd buf siz off = do
-    bytes <- fromIntegral <$> c_pread fd (castPtr buf) (fromIntegral siz) (fromIntegral off)
-    when (bytes < 0) $ throwErrno "positionRead"
-    return bytes
+  bytes <- fromIntegral <$> c_pread fd (castPtr buf) (fromIntegral siz) (fromIntegral off)
+  when (bytes < 0) $ throwErrno "positionRead"
+  return bytes
 
 foreign import ccall unsafe "pread"
   c_pread :: Fd -> Ptr CChar -> ByteCount -> FileOffset -> IO CSsize

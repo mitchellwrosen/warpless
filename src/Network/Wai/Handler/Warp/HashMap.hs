@@ -2,9 +2,9 @@ module Network.Wai.Handler.Warp.HashMap where
 
 import Data.Hashable (hash)
 import Data.IntMap.Strict (IntMap)
-import qualified Data.IntMap.Strict as I
+import Data.IntMap.Strict qualified as I
 import Data.Map.Strict (Map)
-import qualified Data.Map.Strict as M
+import Data.Map.Strict qualified as M
 import Prelude hiding (lookup)
 
 ----------------------------------------------------------------
@@ -28,8 +28,9 @@ isEmpty (HashMap hm) = I.null hm
 ----------------------------------------------------------------
 
 insert :: FilePath -> v -> HashMap v -> HashMap v
-insert path v (HashMap hm) = HashMap
-  $ I.insertWith M.union (hash path) (M.singleton path v) hm
+insert path v (HashMap hm) =
+  HashMap $
+    I.insertWith M.union (hash path) (M.singleton path v) hm
 
 lookup :: FilePath -> HashMap v -> Maybe v
 lookup path (HashMap hm) = I.lookup (hash path) hm >>= M.lookup path

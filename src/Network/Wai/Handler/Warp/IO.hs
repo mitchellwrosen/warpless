@@ -24,9 +24,12 @@ toBufIOWith maxRspBufSize writeBufferRef io builder = do
         More minSize next
           | size < minSize -> do
               when (minSize > maxRspBufSize) $
-                error $ "Sending a Builder response required a buffer of size "
-                          ++ show minSize ++ " which is bigger than the specified maximum of "
-                          ++ show maxRspBufSize ++ "!"
+                error $
+                  "Sending a Builder response required a buffer of size "
+                    ++ show minSize
+                    ++ " which is bigger than the specified maximum of "
+                    ++ show maxRspBufSize
+                    ++ "!"
               -- The current WriteBuffer is too small to fit the next
               -- batch of bytes from the Builder so we free it and
               -- create a new bigger one. Freeing the current buffer,
