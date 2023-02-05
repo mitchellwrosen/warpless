@@ -1,2 +1,0 @@
-:set -optP-include -optPdist/build/autogen/cabal_macros.h -pgmL markdown-unlit
-:set -i../warp -i../warp/dist/build/autogen/ -optP-include -optP../warp/dist/build/autogen/cabal_macros.h
