@@ -26,13 +26,13 @@ type HeaderValue = ByteString
 ----------------------------------------------------------------
 
 -- | Error types for bad 'Request'.
-data InvalidRequest = NotEnoughLines [String]
-                    | BadFirstLine String
+data InvalidRequest = NotEnoughLines ![String]
+                    | BadFirstLine !String
                     | NonHttp
                     | IncompleteHeaders
                     | ConnectionClosedByPeer
                     | OverLargeHeader
-                    | BadProxyHeader String
+                    | BadProxyHeader !String
                     | PayloadTooLarge -- ^ Since 3.3.22
                     | RequestHeaderFieldsTooLarge -- ^ Since 3.3.22
                     deriving (Eq, Typeable)
@@ -72,8 +72,8 @@ instance UnliftIO.Exception ExceptionInsideResponseBody
 --
 -- Since: 3.1.0
 data FileId = FileId {
-    fileIdPath :: FilePath
-  , fileIdFd   :: Maybe Fd
+    fileIdPath :: !FilePath
+  , fileIdFd   :: !(Maybe Fd)
   }
 
 -- |  fileid, offset, length, hook action, HTTP headers
@@ -84,39 +84,39 @@ type SendFile = FileId -> Integer -> Integer -> IO () -> [ByteString] -> IO ()
 -- | A write buffer of a specified size
 -- containing bytes and a way to free the buffer.
 data WriteBuffer = WriteBuffer {
-      bufBuffer :: Buffer
+      bufBuffer :: !Buffer
       -- | The size of the write buffer.
     , bufSize :: !BufSize
       -- | Free the allocated buffer. Warp guarantees it will only be
       -- called once, and no other functions will be called after it.
-    , bufFree :: IO ()
+    , bufFree :: !(IO ())
     }
 
 -- | Data type to manipulate IO actions for connections.
 --   This is used to abstract IO actions for plain HTTP and HTTP over TLS.
 data Connection = Connection {
     -- | This is not used at this moment.
-      connSendMany    :: [ByteString] -> IO ()
+      connSendMany    :: !([ByteString] -> IO ())
     -- | The sending function.
-    , connSendAll     :: ByteString -> IO ()
+    , connSendAll     :: !(ByteString -> IO ())
     -- | The sending function for files in HTTP/1.1.
-    , connSendFile    :: SendFile
+    , connSendFile    :: !SendFile
     -- | The connection closing function. Warp guarantees it will only be
     -- called once. Other functions (like 'connRecv') may be called after
     -- 'connClose' is called.
-    , connClose       :: IO ()
+    , connClose       :: !(IO ())
     -- | The connection receiving function. This returns "" for EOF or exceptions.
-    , connRecv        :: Recv
+    , connRecv        :: !Recv
     -- | The connection receiving function. This tries to fill the buffer.
     --   This returns when the buffer is filled or reaches EOF.
-    , connRecvBuf     :: RecvBuf
+    , connRecvBuf     :: !RecvBuf
     -- | Reference to a write buffer. When during sending of a 'Builder'
     -- response it's detected the current 'WriteBuffer' is too small it will be
     -- freed and a new bigger buffer will be created and written to this
     -- reference.
-    , connWriteBuffer :: IORef WriteBuffer
+    , connWriteBuffer :: !(IORef WriteBuffer)
     -- | Is this connection HTTP/2?
-    , connHTTP2       :: IORef Bool
+    , connHTTP2       :: !(IORef Bool)
     }
 
 getConnHTTP2 :: Connection -> IO Bool
@@ -128,10 +128,10 @@ setConnHTTP2 conn b = writeIORef (connHTTP2 conn) b
 ----------------------------------------------------------------
 
 data InternalInfo = InternalInfo {
-    timeoutManager :: T.Manager
-  , getDate        :: IO D.GMTDate
-  , getFd          :: FilePath -> IO (Maybe F.Fd, F.Refresh)
-  , getFileInfo    :: FilePath -> IO I.FileInfo
+    timeoutManager :: !T.Manager
+  , getDate        :: !(IO D.GMTDate)
+  , getFd          :: !(FilePath -> IO (Maybe F.Fd, F.Refresh))
+  , getFileInfo    :: !(FilePath -> IO I.FileInfo)
   }
 
 ----------------------------------------------------------------
@@ -168,14 +168,14 @@ readLeftoverSource (Source ref _) = readIORef ref
 -- | What kind of transport is used for this connection?
 data Transport = TCP -- ^ Plain channel: TCP
                | TLS {
-                   tlsMajorVersion :: Int
-                 , tlsMinorVersion :: Int
-                 , tlsNegotiatedProtocol :: Maybe ByteString -- ^ The result of Application Layer Protocol Negociation in RFC 7301
-                 , tlsChiperID :: Word16
+                   tlsMajorVersion :: !Int
+                 , tlsMinorVersion :: !Int
+                 , tlsNegotiatedProtocol :: !(Maybe ByteString) -- ^ The result of Application Layer Protocol Negociation in RFC 7301
+                 , tlsChiperID :: !Word16
                  }  -- ^ Encrypted channel: TLS or SSL
                | QUIC {
-                   quicNegotiatedProtocol :: Maybe ByteString
-                 , quicChiperID :: Word16
+                   quicNegotiatedProtocol :: !(Maybe ByteString)
+                 , quicChiperID :: !Word16
                  }
 
 isTransportSecure :: Transport -> Bool

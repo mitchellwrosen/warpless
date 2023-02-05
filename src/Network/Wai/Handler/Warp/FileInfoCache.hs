@@ -21,11 +21,11 @@ import Network.Wai.Handler.Warp.Imports
 data FileInfo = FileInfo {
     fileInfoName :: !FilePath
   , fileInfoSize :: !Integer
-  , fileInfoTime :: HTTPDate   -- ^ Modification time
-  , fileInfoDate :: ByteString -- ^ Modification time in the GMT format
+  , fileInfoTime :: !HTTPDate   -- ^ Modification time
+  , fileInfoDate :: !ByteString -- ^ Modification time in the GMT format
   } deriving (Eq, Show)
 
-data Entry = Negative | Positive FileInfo
+data Entry = Negative | Positive !FileInfo
 type Cache = HashMap Entry
 type FileInfoCache = Reaper Cache (FilePath,Entry)
 

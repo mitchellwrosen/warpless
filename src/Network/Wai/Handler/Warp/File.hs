@@ -23,8 +23,8 @@ import Network.Wai.Handler.Warp.PackInt
 
 ----------------------------------------------------------------
 
-data RspFileInfo = WithoutBody H.Status
-                 | WithBody H.Status H.ResponseHeaders Integer Integer
+data RspFileInfo = WithoutBody !H.Status
+                 | WithBody !H.Status !H.ResponseHeaders !Integer !Integer
                  deriving (Eq,Show)
 
 ----------------------------------------------------------------

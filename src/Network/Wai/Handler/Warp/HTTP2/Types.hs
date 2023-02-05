@@ -27,11 +27,11 @@ data HTTP2Data = HTTP2Data {
     -- | Accessor for 'PushPromise' in 'HTTP2Data'.
     --
     --   Since: 3.2.7
-      http2dataPushPromise :: [PushPromise]
+      http2dataPushPromise :: ![PushPromise]
     -- | Accessor for 'H2.TrailersMaker' in 'HTTP2Data'.
     --
     --   Since: 3.2.8 but the type changed in 3.3.0
-    , http2dataTrailers :: H2.TrailersMaker
+    , http2dataTrailers :: !H2.TrailersMaker
     }
 
 -- | Default HTTP/2 specific data.
@@ -50,24 +50,24 @@ data PushPromise = PushPromise {
     --   E.g. \"\/style\/default.css\".
     --
     --   Since: 3.2.7
-      promisedPath            :: ByteString
+      promisedPath            :: !ByteString
     -- | Accessor for 'FilePath' in 'PushPromise'.
     --   E.g. \"FILE_PATH/default.css\".
     --
     --   Since: 3.2.7
-    , promisedFile            :: FilePath
+    , promisedFile            :: !FilePath
     -- | Accessor for 'H.ResponseHeaders' in 'PushPromise'
     --   \"content-type\" must be specified.
     --   Default value: [].
     --
     --
     --   Since: 3.2.7
-    , promisedResponseHeaders :: H.ResponseHeaders
+    , promisedResponseHeaders :: !H.ResponseHeaders
     -- | Accessor for 'Weight' in 'PushPromise'.
     --    Default value: 16.
     --
     --   Since: 3.2.7
-    , promisedWeight          :: Weight
+    , promisedWeight          :: !Weight
     } deriving (Eq,Ord,Show)
 
 -- | Default push promise.

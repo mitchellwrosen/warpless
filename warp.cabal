@@ -98,6 +98,4 @@ Library
 
   if (os(linux) || os(freebsd) || os(darwin)) && flag(allow-sendfilefd)
       Cpp-Options:   -DSENDFILEFD
-  if impl(ghc >= 8)
-      Default-Extensions:  Strict StrictData
   HS-Source-Dirs:       src

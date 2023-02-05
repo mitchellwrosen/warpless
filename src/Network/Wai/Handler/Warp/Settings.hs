@@ -31,22 +31,22 @@ import Network.Wai.Handler.Warp.Types
 --
 -- > setTimeout 20 defaultSettings
 data Settings = Settings
-    { settingsPort :: Port -- ^ Port to listen on. Default value: 3000
-    , settingsHost :: HostPreference -- ^ Default value: HostIPv4
-    , settingsOnException :: Maybe Request -> SomeException -> IO () -- ^ What to do with exceptions thrown by either the application or server. Default: ignore server-generated exceptions (see 'InvalidRequest') and print application-generated applications to stderr.
-    , settingsOnExceptionResponse :: SomeException -> Response
+    { settingsPort :: !Port -- ^ Port to listen on. Default value: 3000
+    , settingsHost :: !HostPreference -- ^ Default value: HostIPv4
+    , settingsOnException :: !(Maybe Request -> SomeException -> IO ()) -- ^ What to do with exceptions thrown by either the application or server. Default: ignore server-generated exceptions (see 'InvalidRequest') and print application-generated applications to stderr.
+    , settingsOnExceptionResponse :: !(SomeException -> Response)
       -- ^ A function to create `Response` when an exception occurs.
       --
       -- Default: 500, text/plain, \"Something went wrong\"
       --
       -- Since 2.0.3
-    , settingsOnOpen :: SockAddr -> IO Bool -- ^ What to do when a connection is open. When 'False' is returned, the connection is closed immediately. Otherwise, the connection is going on. Default: always returns 'True'.
-    , settingsOnClose :: SockAddr -> IO ()  -- ^ What to do when a connection is close. Default: do nothing.
-    , settingsTimeout :: Int -- ^ Timeout value in seconds. Default value: 30
-    , settingsManager :: Maybe Manager -- ^ Use an existing timeout manager instead of spawning a new one. If used, 'settingsTimeout' is ignored. Default is 'Nothing'
-    , settingsFdCacheDuration :: Int -- ^ Cache duration time of file descriptors in seconds. 0 means that the cache mechanism is not used. Default value: 0
-    , settingsFileInfoCacheDuration :: Int -- ^ Cache duration time of file information in seconds. 0 means that the cache mechanism is not used. Default value: 0
-    , settingsBeforeMainLoop :: IO ()
+    , settingsOnOpen :: !(SockAddr -> IO Bool) -- ^ What to do when a connection is open. When 'False' is returned, the connection is closed immediately. Otherwise, the connection is going on. Default: always returns 'True'.
+    , settingsOnClose :: !(SockAddr -> IO ())  -- ^ What to do when a connection is close. Default: do nothing.
+    , settingsTimeout :: !Int -- ^ Timeout value in seconds. Default value: 30
+    , settingsManager :: !(Maybe Manager) -- ^ Use an existing timeout manager instead of spawning a new one. If used, 'settingsTimeout' is ignored. Default is 'Nothing'
+    , settingsFdCacheDuration :: !Int -- ^ Cache duration time of file descriptors in seconds. 0 means that the cache mechanism is not used. Default value: 0
+    , settingsFileInfoCacheDuration :: !Int -- ^ Cache duration time of file information in seconds. 0 means that the cache mechanism is not used. Default value: 0
+    , settingsBeforeMainLoop :: !(IO ())
       -- ^ Code to run after the listening socket is ready but before entering
       -- the main event loop. Useful for signaling to tests that they can start
       -- running, or to drop permissions after binding to a restricted port.
@@ -55,7 +55,7 @@ data Settings = Settings
       --
       -- Since 1.3.6
 
-    , settingsFork :: ((forall a. IO a -> IO a) -> IO ()) -> IO ()
+    , settingsFork :: !(((forall a. IO a -> IO a) -> IO ()) -> IO ())
       -- ^ Code to fork a new thread to accept a connection.
       --
       -- This may be useful if you need OS bound threads, or if
@@ -65,7 +65,7 @@ data Settings = Settings
       --
       -- Since 3.0.4
 
-    , settingsAccept :: Socket -> IO (Socket, SockAddr)
+    , settingsAccept :: !(Socket -> IO (Socket, SockAddr))
       -- ^ Code to accept a new connection.
       --
       -- Useful if you need to provide connected sockets from something other
@@ -75,7 +75,7 @@ data Settings = Settings
       --
       -- Since 3.3.24
 
-    , settingsNoParsePath :: Bool
+    , settingsNoParsePath :: !Bool
       -- ^ Perform no parsing on the rawPathInfo.
       --
       -- This is useful for writing HTTP proxies.
@@ -83,7 +83,7 @@ data Settings = Settings
       -- Default: False
       --
       -- Since 2.0.3
-    , settingsInstallShutdownHandler :: IO () -> IO ()
+    , settingsInstallShutdownHandler :: !(IO () -> IO ())
       -- ^ An action to install a handler (e.g. Unix signal handler)
       -- to close a listen socket.
       -- The first argument is an action to close the listen socket.
@@ -91,62 +91,62 @@ data Settings = Settings
       -- Default: no action
       --
       -- Since 3.0.1
-    , settingsServerName :: ByteString
+    , settingsServerName :: !ByteString
       -- ^ Default server name if application does not set one.
       --
       -- Since 3.0.2
-    , settingsMaximumBodyFlush :: Maybe Int
+    , settingsMaximumBodyFlush :: !(Maybe Int)
       -- ^ See @setMaximumBodyFlush@.
       --
       -- Since 3.0.3
-    , settingsProxyProtocol :: ProxyProtocol
+    , settingsProxyProtocol :: !ProxyProtocol
       -- ^ Specify usage of the PROXY protocol.
       --
       -- Since 3.0.5
-    , settingsSlowlorisSize :: Int
+    , settingsSlowlorisSize :: !Int
       -- ^ Size of bytes read to prevent Slowloris protection. Default value: 2048
       --
       -- Since 3.1.2
-    , settingsHTTP2Enabled :: Bool
+    , settingsHTTP2Enabled :: !Bool
       -- ^ Whether to enable HTTP2 ALPN/upgrades. Default: True
       --
       -- Since 3.1.7
-    , settingsLogger :: Request -> H.Status -> Maybe Integer -> IO ()
+    , settingsLogger :: !(Request -> H.Status -> Maybe Integer -> IO ())
       -- ^ A log function. Default: no action.
       --
       -- Since 3.1.10
-    , settingsServerPushLogger :: Request -> ByteString -> Integer -> IO ()
+    , settingsServerPushLogger :: !(Request -> ByteString -> Integer -> IO ())
       -- ^ A HTTP/2 server push log function. Default: no action.
       --
       -- Since 3.2.7
-    , settingsGracefulShutdownTimeout :: Maybe Int
+    , settingsGracefulShutdownTimeout :: !(Maybe Int)
       -- ^ An optional timeout to limit the time (in seconds) waiting for
       -- a graceful shutdown of the web server.
       --
       -- Since 3.2.8
-    , settingsGracefulCloseTimeout1 :: Int
+    , settingsGracefulCloseTimeout1 :: !Int
       -- ^ A timeout to limit the time (in milliseconds) waiting for
       -- FIN for HTTP/1.x. 0 means uses immediate close.
       -- Default: 0.
       --
       -- Since 3.3.5
-    , settingsGracefulCloseTimeout2 :: Int
+    , settingsGracefulCloseTimeout2 :: !Int
       -- ^ A timeout to limit the time (in milliseconds) waiting for
       -- FIN for HTTP/2. 0 means uses immediate close.
       -- Default: 2000.
       --
       -- Since 3.3.5
-    , settingsMaxTotalHeaderLength :: Int
+    , settingsMaxTotalHeaderLength :: !Int
       -- ^ Determines the maximum header size that Warp will tolerate when using HTTP/1.x.
       --
       -- Since 3.3.8
-    , settingsAltSvc :: Maybe ByteString
+    , settingsAltSvc :: !(Maybe ByteString)
       -- ^ Specify the header value of Alternative Services (AltSvc:).
       --
       -- Default: Nothing
       --
       -- Since 3.3.11
-    , settingsMaxBuilderResponseBufferSize :: Int
+    , settingsMaxBuilderResponseBufferSize :: !Int
       -- ^ Determines the maxium buffer size when sending `Builder` responses
       -- (See `responseBuilder`).
       --

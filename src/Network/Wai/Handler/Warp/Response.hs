@@ -181,10 +181,10 @@ sanitizeHeaderValue v = case C8.lines $ S.filter (/= _cr) v of
 ----------------------------------------------------------------
 
 data Rsp = RspNoBody
-         | RspFile FilePath (Maybe FilePart) IndexedHeader Bool (IO ())
-         | RspBuilder Builder Bool
-         | RspStream StreamingBody Bool
-         | RspRaw (IO ByteString -> (ByteString -> IO ()) -> IO ()) (IO ByteString)
+         | RspFile !FilePath !(Maybe FilePart) !IndexedHeader !Bool !(IO ())
+         | RspBuilder !Builder !Bool
+         | RspStream !StreamingBody !Bool
+         | RspRaw !(IO ByteString -> (ByteString -> IO ()) -> IO ()) !(IO ByteString)
 
 ----------------------------------------------------------------
 

@@ -80,8 +80,8 @@ testWithApplicationSettings settings mkApp action = do
 
 data Waiter a
   = Waiter {
-    notify :: a -> IO (),
-    waitFor :: IO a
+    notify :: !(a -> IO ()),
+    waitFor :: !(IO a)
   }
 
 mkWaiter :: IO (Waiter a)
