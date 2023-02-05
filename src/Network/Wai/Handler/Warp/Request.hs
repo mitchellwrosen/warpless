@@ -9,9 +9,6 @@ module Network.Wai.Handler.Warp.Request (
   , headerLines
   , pauseTimeoutKey
   , getFileInfoKey
-#ifdef MIN_VERSION_x509
-  , getClientCertificateKey
-#endif
   , NoKeepAliveRequest (..)
   ) where
 
@@ -24,9 +21,6 @@ import qualified Data.CaseInsensitive as CI
 import qualified Data.IORef as I
 import Data.Typeable (Typeable)
 import qualified Data.Vault.Lazy as Vault
-#ifdef MIN_VERSION_x509
-import Data.X509
-#endif
 import qualified Network.HTTP.Types as H
 import Network.Socket (SockAddr)
 import Network.Wai
@@ -76,9 +70,6 @@ recvRequest firstRequest settings conn ii th addr src transport = do
         rawPath = if settingsNoParsePath settings then unparsedPath else path
         vaultValue = Vault.insert pauseTimeoutKey (Timeout.pause th)
                    $ Vault.insert getFileInfoKey (getFileInfo ii)
-#ifdef MIN_VERSION_x509
-                   $ Vault.insert getClientCertificateKey (getTransportClientCertificate transport)
-#endif
                      Vault.empty
     (rbody, remainingRef, bodyLength) <- bodyAndSource src cl te
     -- body producing function which will produce '100-continue', if needed
@@ -322,9 +313,3 @@ pauseTimeoutKey = unsafePerformIO Vault.newKey
 getFileInfoKey :: Vault.Key (FilePath -> IO FileInfo)
 getFileInfoKey = unsafePerformIO Vault.newKey
 {-# NOINLINE getFileInfoKey #-}
-
-#ifdef MIN_VERSION_x509
-getClientCertificateKey :: Vault.Key (Maybe CertificateChain)
-getClientCertificateKey = unsafePerformIO Vault.newKey
-{-# NOINLINE getClientCertificateKey #-}
-#endif

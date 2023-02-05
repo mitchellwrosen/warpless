@@ -8,9 +8,6 @@ import qualified UnliftIO
 import qualified Data.ByteString as S
 import Data.IORef (IORef, readIORef, writeIORef, newIORef)
 import Data.Typeable (Typeable)
-#ifdef MIN_VERSION_x509
-import Data.X509
-#endif
 import Network.Socket.BufferPool
 import System.Posix.Types (Fd)
 import qualified System.TimeManager as T
@@ -179,16 +176,10 @@ data Transport = TCP -- ^ Plain channel: TCP
                  , tlsMinorVersion :: Int
                  , tlsNegotiatedProtocol :: Maybe ByteString -- ^ The result of Application Layer Protocol Negociation in RFC 7301
                  , tlsChiperID :: Word16
-#ifdef MIN_VERSION_x509
-                 , tlsClientCertificate :: Maybe CertificateChain
-#endif
                  }  -- ^ Encrypted channel: TLS or SSL
                | QUIC {
                    quicNegotiatedProtocol :: Maybe ByteString
                  , quicChiperID :: Word16
-#ifdef MIN_VERSION_x509
-                 , quicClientCertificate :: Maybe CertificateChain
-#endif
                  }
 
 isTransportSecure :: Transport -> Bool
@@ -198,10 +189,3 @@ isTransportSecure _   = True
 isTransportQUIC :: Transport -> Bool
 isTransportQUIC QUIC{} = True
 isTransportQUIC _      = False
-
-#ifdef MIN_VERSION_x509
-getTransportClientCertificate :: Transport -> Maybe CertificateChain
-getTransportClientCertificate TCP              = Nothing
-getTransportClientCertificate (TLS _ _ _ _ cc) = cc
-getTransportClientCertificate (QUIC _ _ cc)    = cc
-#endif
