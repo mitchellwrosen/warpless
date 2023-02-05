@@ -43,7 +43,7 @@ withApplicationSettings settings' mkApp action = do
             }
     result <-
       race
-        (runSettingsSocket settings sock app)
+        (runSocket settings sock app)
         (waitFor started >> action port)
     case result of
       Left () -> UnliftIO.throwString "Unexpected: runSettingsSocket exited"

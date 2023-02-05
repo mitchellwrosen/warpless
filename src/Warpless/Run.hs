@@ -14,7 +14,6 @@ import Network.Socket (SockAddr, Socket, SocketOption (..), close, fdSocket, gra
 import Network.Socket.BufferPool
 import Network.Socket.ByteString qualified as Sock
 import Network.Wai
-import System.Environment (lookupEnv)
 import System.IO.Error (ioeGetErrorType)
 import System.TimeManager qualified as T
 import System.Timeout (timeout)
@@ -92,39 +91,18 @@ socketConnection set s = do
         UnliftIO.throwIO
         $ Sock.sendAll sock bs
 
--- | Run an 'Application' on the given port.
--- This calls 'runSettings' with 'defaultSettings'.
-run :: Port -> Application -> IO ()
-run p = runSettings defaultSettings {settingsPort = p}
-
--- | Run an 'Application' on the port present in the @PORT@
--- environment variable. Uses the 'Port' given when the variable is unset.
--- This calls 'runSettings' with 'defaultSettings'.
---
--- Since 3.0.9
-runEnv :: Port -> Application -> IO ()
-runEnv p app = do
-  mp <- lookupEnv "PORT"
-
-  maybe (run p app) runReadPort mp
-  where
-    runReadPort :: String -> IO ()
-    runReadPort sp = case reads sp of
-      ((p', _) : _) -> run p' app
-      _ -> fail $ "Invalid value in $PORT: " ++ sp
-
 -- | Run an 'Application' with the given 'Settings'.
 -- This opens a listen socket on the port defined in 'Settings' and
 -- calls 'runSettingsSocket'.
-runSettings :: Settings -> Application -> IO ()
-runSettings set app =
+run :: Settings -> Application -> IO ()
+run set app =
   withSocketsDo $
     UnliftIO.bracket
       (bindPortTCP (settingsPort set) (settingsHost set))
       close
       ( \socket -> do
           setSocketCloseOnExec socket
-          runSettingsSocket set socket app
+          runSocket set socket app
       )
 
 -- | This installs a shutdown handler for the given socket and
@@ -138,8 +116,8 @@ runSettings set app =
 --
 -- Note that the 'settingsPort' will still be passed to 'Application's via the
 -- 'serverPort' record.
-runSettingsSocket :: Settings -> Socket -> Application -> IO ()
-runSettingsSocket set@Settings {settingsAccept = accept'} socket app = do
+runSocket :: Settings -> Socket -> Application -> IO ()
+runSocket set@Settings {settingsAccept = accept'} socket app = do
   settingsInstallShutdownHandler set closeListenSocket
   runSettingsConnection set getConn app
   where

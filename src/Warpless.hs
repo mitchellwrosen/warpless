@@ -37,9 +37,7 @@ module Warpless
     -- | All of these automatically serve the same 'Application' over HTTP\/1,
     -- HTTP\/1.1, and HTTP\/2.
     run,
-    runEnv,
-    runSettings,
-    runSettingsSocket,
+    runSocket,
 
     -- * Settings
     Settings,
