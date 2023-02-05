@@ -6,10 +6,6 @@ import Foreign.Storable (poke)
 import Network.HTTP.Types qualified as H
 import Warpless.Imports
 
--- $setup
--- >>> import Data.ByteString.Char8 as C8
--- >>> import Test.QuickCheck (Large(..))
-
 -- |
 --
 -- prop> packIntegral (abs n) == C8.pack (show (abs n))

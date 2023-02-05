@@ -38,11 +38,6 @@ import Warpless.ResponseHeader
 import Warpless.Settings
 import Warpless.Types
 
--- $setup
--- >>> :set -XOverloadedStrings
-
-----------------------------------------------------------------
-
 -- | Sending a HTTP response to 'Connection' according to 'Response'.
 --
 --   Applications/middlewares MUST provide a proper 'H.ResponseHeaders'.

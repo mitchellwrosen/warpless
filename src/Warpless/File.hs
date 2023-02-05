@@ -17,9 +17,6 @@ import Warpless.Header
 import Warpless.Imports
 import Warpless.PackInt
 
--- $setup
--- >>> import Test.QuickCheck
-
 ----------------------------------------------------------------
 
 data RspFileInfo

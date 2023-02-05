@@ -15,11 +15,6 @@ import UnliftIO (throwIO)
 import Warpless.Imports
 import Warpless.Types
 
--- $setup
--- >>> :set -XOverloadedStrings
-
-----------------------------------------------------------------
-
 parseHeaderLines ::
   [ByteString] ->
   IO
