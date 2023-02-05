@@ -9,7 +9,6 @@ where
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.IORef qualified as I
-import Network.HTTP2.Frame qualified as H2
 import Network.HTTP2.Server qualified as H2
 import Network.Socket (SockAddr)
 import Network.Socket.BufferPool
@@ -50,14 +49,8 @@ http2 settings ii conn transport app origAddr th bs = do
             confPositionReadMaker = pReadMaker ii,
             confTimeoutManager = timeoutManager ii
           }
-  checkTLS
   setConnHTTP2 conn True
   H2.run conf $ http2server settings ii transport origAddr app
-  where
-    checkTLS = case transport of
-      TCP -> return () -- direct
-      tls -> unless (tls12orLater tls) $ goaway conn H2.InadequateSecurity "Weak TLS"
-    tls12orLater tls = tlsMajorVersion tls == 3 && tlsMinorVersion tls >= 3
 
 -- | Converting WAI application to the server type of http2 library.
 --
@@ -127,11 +120,3 @@ wrappedRecvN th istatus slowlorisSize readN bufsize = do
   where
     handler :: UnliftIO.SomeException -> IO ByteString
     handler _ = return ""
-
--- connClose must not be called here since Run:fork calls it
-goaway :: Connection -> H2.ErrorCodeId -> ByteString -> IO ()
-goaway Connection {..} etype debugmsg = connSendAll bytestream
-  where
-    einfo = H2.encodeInfo id 0
-    frame = H2.GoAwayFrame 0 etype debugmsg
-    bytestream = H2.encodeFrame einfo frame

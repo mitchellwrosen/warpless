@@ -1,30 +1,15 @@
 module Warpless.HTTP2.Types
-  ( isHTTP2,
-    HTTP2Data (..),
+  ( HTTP2Data (..),
     defaultHTTP2Data,
     PushPromise (..),
     defaultPushPromise,
   )
 where
 
-import Data.ByteString qualified as BS
 import Network.HTTP.Types qualified as H
 import Network.HTTP2.Frame
 import Network.HTTP2.Server qualified as H2
 import Warpless.Imports
-import Warpless.Types
-
-----------------------------------------------------------------
-
-isHTTP2 :: Transport -> Bool
-isHTTP2 TCP = False
-isHTTP2 tls = useHTTP2
-  where
-    useHTTP2 = case tlsNegotiatedProtocol tls of
-      Nothing -> False
-      Just proto -> "h2" `BS.isPrefixOf` proto
-
-----------------------------------------------------------------
 
 -- | HTTP/2 specific data.
 --

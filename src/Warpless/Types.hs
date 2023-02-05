@@ -187,14 +187,6 @@ readLeftoverSource (Source ref _) = readIORef ref
 data Transport
   = -- | Plain channel: TCP
     TCP
-  | TLS
-      { tlsMajorVersion :: !Int,
-        tlsMinorVersion :: !Int,
-        -- | The result of Application Layer Protocol Negociation in RFC 7301
-        tlsNegotiatedProtocol :: !(Maybe ByteString),
-        -- | Encrypted channel: TLS or SSL
-        tlsChiperID :: !Word16
-      }
   | QUIC
       { quicNegotiatedProtocol :: !(Maybe ByteString),
         quicChiperID :: !Word16

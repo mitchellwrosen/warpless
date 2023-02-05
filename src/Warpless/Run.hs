@@ -34,7 +34,6 @@ import Warpless.FdCache qualified as F
 import Warpless.FileInfoCache qualified as I
 import Warpless.HTTP1 (http1)
 import Warpless.HTTP2 (http2)
-import Warpless.HTTP2.Types (isHTTP2)
 import Warpless.Imports hiding (readInt)
 import Warpless.SendFile
 import Warpless.Settings
@@ -340,14 +339,12 @@ serveConnection ::
   IO ()
 serveConnection conn ii th origAddr transport settings app = do
   -- fixme: Upgrading to HTTP/2 should be supported.
-  (h2, bs) <-
-    if isHTTP2 transport
-      then return (True, "")
-      else do
-        bs0 <- connRecv conn
-        if S.length bs0 >= 4 && "PRI " `S.isPrefixOf` bs0
-          then return (True, bs0)
-          else return (False, bs0)
+  (h2, bs) <- do
+    bs0 <- connRecv conn
+    if S.length bs0 >= 4 && "PRI " `S.isPrefixOf` bs0
+      then return (True, bs0)
+      else return (False, bs0)
+  print (h2, bs)
   if settingsHTTP2Enabled settings && h2
     then do
       http2 settings ii conn transport app origAddr th bs
