@@ -6,9 +6,6 @@ module Warpless.Internal
     ProxyProtocol (..),
 
     -- * Low level run functions
-    runSettingsConnection,
-    runSettingsConnectionMaker,
-    runSettingsConnectionMakerSecure,
     Transport (..),
 
     -- * Connection

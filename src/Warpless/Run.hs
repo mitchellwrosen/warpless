@@ -1,17 +1,13 @@
 module Warpless.Run
   ( run,
     runSocket,
-    runSettingsConnection,
-    runSettingsConnectionMaker,
-    runSettingsConnectionMakerSecure,
     socketConnection,
     setSocketCloseOnExec,
     withII,
   )
 where
 
-import Control.Arrow (first)
-import Control.Exception (allowInterrupt)
+import Control.Exception (SomeException (..), allowInterrupt)
 import Control.Exception qualified
 import Data.ByteString qualified as S
 import Data.IORef (newIORef, readIORef)
@@ -68,7 +64,7 @@ socketConnection set s = do
   where
     receive' sock pool = UnliftIO.handleIO handler $ receive sock pool
       where
-        handler :: UnliftIO.IOException -> IO ByteString
+        handler :: IOException -> IO ByteString
         handler e
           | ioeGetErrorType e == InvalidArgument = return ""
           | otherwise = UnliftIO.throwIO e
@@ -124,55 +120,15 @@ run set app =
 -- 'serverPort' record.
 runSocket :: Settings -> Socket -> Application -> IO ()
 runSocket set@Settings {settingsAccept = accept'} socket app = do
-  settingsInstallShutdownHandler set closeListenSocket
-  runSettingsConnection set getConn app
-  where
-    getConn = do
-      (s, sa) <- accept' socket
-      setSocketCloseOnExec s
-      -- NoDelay causes an error for AF_UNIX.
-      setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(UnliftIO.SomeException _) -> return ()
-      conn <- socketConnection set s
-      return (conn, sa)
-
-    closeListenSocket = close socket
-
--- | The connection setup action would be expensive. A good example
--- is initialization of TLS.
--- So, this converts the connection setup action to the connection maker
--- which will be executed after forking a new worker thread.
--- Then this calls 'runSettingsConnectionMaker' with the connection maker.
--- This allows the expensive computations to be performed
--- in a separate worker thread instead of the main server loop.
---
--- Since 1.3.5
-runSettingsConnection :: Settings -> IO (Connection, SockAddr) -> Application -> IO ()
-runSettingsConnection set getConn app = runSettingsConnectionMaker set getConnMaker app
-  where
-    getConnMaker :: IO (IO Connection, SockAddr)
-    getConnMaker = do
-      (conn, sa) <- getConn
-      return (return conn, sa)
-
--- | This modifies the connection maker so that it returns 'TCP' for 'Transport'
--- (i.e. plain HTTP) then calls 'runSettingsConnectionMakerSecure'.
-runSettingsConnectionMaker :: Settings -> IO (IO Connection, SockAddr) -> Application -> IO ()
-runSettingsConnectionMaker x y =
-  runSettingsConnectionMakerSecure x (toTCP <$> y)
-  where
-    toTCP :: (IO Connection, SockAddr) -> (IO (Connection, Transport), SockAddr)
-    toTCP = first ((,TCP) <$>)
-
-----------------------------------------------------------------
-
--- | The core run function which takes 'Settings',
--- a connection maker and 'Application'.
--- The connection maker can return a connection of either plain HTTP
--- or HTTP over TLS.
---
--- Since 2.1.4
-runSettingsConnectionMakerSecure :: Settings -> IO (IO (Connection, Transport), SockAddr) -> Application -> IO ()
-runSettingsConnectionMakerSecure set getConnMaker app = do
+  settingsInstallShutdownHandler set (close socket)
+  let getConnMaker :: IO (Connection, Transport, SockAddr)
+      getConnMaker = do
+        (s, sa) <- accept' socket
+        setSocketCloseOnExec s
+        -- NoDelay causes an error for AF_UNIX.
+        setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
+        conn <- socketConnection set s
+        pure (conn, TCP, sa)
   settingsBeforeMainLoop set
   counter <- newCounter
   withII set $ acceptConnection set getConnMaker app counter
@@ -182,12 +138,11 @@ runSettingsConnectionMakerSecure set getConnMaker app = do
 -- Since 3.3.11
 withII :: Settings -> (InternalInfo -> IO a) -> IO a
 withII set action =
-  withTimeoutManager $ \tm ->
-    D.withDateCache $ \dc ->
-      F.withFdCache fdCacheDurationInSeconds $ \fdc ->
-        I.withFileInfoCache fdFileInfoDurationInSeconds $ \fic -> do
-          let ii = InternalInfo tm dc fdc fic
-          action ii
+  withTimeoutManager \tm ->
+    D.withDateCache \dc ->
+      F.withFdCache fdCacheDurationInSeconds \fdc ->
+        I.withFileInfoCache fdFileInfoDurationInSeconds \fic ->
+          action (InternalInfo tm dc fdc fic)
   where
     !fdCacheDurationInSeconds = settingsFdCacheDuration set * 1000000
     !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration set * 1000000
@@ -216,7 +171,7 @@ withII set action =
 -- Our approach is explained in the comments below.
 acceptConnection ::
   Settings ->
-  IO (IO (Connection, Transport), SockAddr) ->
+  IO (Connection, Transport, SockAddr) ->
   Application ->
   Counter ->
   InternalInfo ->
@@ -227,7 +182,7 @@ acceptConnection set getConnMaker app counter ii = do
   -- acceptNewConnection and the registering of connClose.
   --
   -- acceptLoop can be broken by closing the listening socket.
-  void $ UnliftIO.mask_ acceptLoop
+  UnliftIO.mask_ acceptLoop
   -- In some cases, we want to stop Warp here without graceful shutdown.
   -- So, async exceptions are allowed here.
   -- That's why `finally` is not used.
@@ -238,17 +193,11 @@ acceptConnection set getConnMaker app counter ii = do
       allowInterrupt
 
       -- acceptNewConnection will try to receive the next incoming
-      -- request. It returns a /connection maker/, not a connection,
-      -- since in some circumstances creating a working connection
-      -- from a raw socket may be an expensive operation, and this
-      -- expensive work should not be performed in the main event
-      -- loop. An example of something expensive would be TLS
-      -- negotiation.
-      mx <- acceptNewConnection
-      case mx of
-        Nothing -> return ()
-        Just (mkConn, addr) -> do
-          fork set mkConn addr app counter ii
+      -- request.
+      acceptNewConnection >>= \case
+        Nothing -> pure ()
+        Just (conn, transport, addr) -> do
+          fork set conn transport addr app counter ii
           acceptLoop
 
     acceptNewConnection = do
@@ -270,62 +219,66 @@ acceptConnection set getConnMaker app counter ii = do
 -- function to unmask (i.e., allow async exceptions to be thrown).
 fork ::
   Settings ->
-  IO (Connection, Transport) ->
+  Connection ->
+  Transport ->
   SockAddr ->
   Application ->
   Counter ->
   InternalInfo ->
   IO ()
-fork set mkConn addr app counter ii = settingsFork set $ \unmask ->
-  -- Call the user-supplied on exception code if any
-  -- exceptions are thrown.
-  --
-  -- Intentionally using Control.Exception.handle, since we want to
-  -- catch all exceptions and avoid them from propagating, even
-  -- async exceptions. See:
-  -- https://github.com/yesodweb/wai/issues/850
-  Control.Exception.handle (settingsOnException set Nothing) $
-    -- Run the connection maker to get a new connection, and ensure
-    -- that the connection is closed. If the mkConn call throws an
-    -- exception, we will leak the connection. If the mkConn call is
-    -- vulnerable to attacks (e.g., Slowloris), we do nothing to
-    -- protect the server. It is therefore vital that mkConn is well
-    -- vetted.
+fork set conn transport addr app counter ii =
+  settingsFork set \unmask ->
+    -- Call the user-supplied on exception code if any
+    -- exceptions are thrown.
     --
-    -- We grab the connection before registering timeouts since the
-    -- timeouts will be useless during connection creation, due to the
-    -- fact that async exceptions are still masked.
-    UnliftIO.bracket mkConn cleanUp (serve unmask)
+    -- Intentionally using Control.Exception.handle, since we want to
+    -- catch all exceptions and avoid them from propagating, even
+    -- async exceptions. See:
+    -- https://github.com/yesodweb/wai/issues/850
+    Control.Exception.handle (settingsOnException set Nothing) $
+      -- Run the connection maker to get a new connection, and ensure
+      -- that the connection is closed. If the mkConn call throws an
+      -- exception, we will leak the connection. If the mkConn call is
+      -- vulnerable to attacks (e.g., Slowloris), we do nothing to
+      -- protect the server. It is therefore vital that mkConn is well
+      -- vetted.
+      --
+      -- We grab the connection before registering timeouts since the
+      -- timeouts will be useless during connection creation, due to the
+      -- fact that async exceptions are still masked.
+      serve unmask `UnliftIO.finally` cleanUp
   where
-    cleanUp :: (Connection, Transport) -> IO ()
-    cleanUp (conn, _) =
+    cleanUp :: IO ()
+    cleanUp =
       connClose conn `UnliftIO.finally` do
-        writeBuffer <- readIORef $ connWriteBuffer conn
+        writeBuffer <- readIORef (connWriteBuffer conn)
         bufFree writeBuffer
 
     -- We need to register a timeout handler for this thread, and
     -- cancel that handler as soon as we exit.
-    serve :: (forall x. IO x -> IO x) -> (Connection, Transport) -> IO ()
-    serve unmask (conn, transport) = UnliftIO.bracket register cancel $ \th -> do
-      -- We now have fully registered a connection close handler in
-      -- the case of all exceptions, so it is safe to once again
-      -- allow async exceptions.
-      unmask
-        .
-        -- Call the user-supplied code for connection open and
-        -- close events
-        UnliftIO.bracket (onOpen addr) (onClose addr)
-        $ \goingon ->
-          -- Actually serve this connection.  bracket with closeConn
-          -- above ensures the connection is closed.
-          when goingon $ serveConnection conn ii th addr transport set app
+    serve :: (forall x. IO x -> IO x) -> IO ()
+    serve unmask =
+      UnliftIO.bracket register T.cancel \th -> do
+        -- We now have fully registered a connection close handler in
+        -- the case of all exceptions, so it is safe to once again
+        -- allow async exceptions.
+        unmask $
+          -- Call the user-supplied code for connection open and
+          -- close events
+          UnliftIO.bracket (onOpen addr) (onClose addr) \goingon ->
+            -- Actually serve this connection.  bracket with closeConn
+            -- above ensures the connection is closed.
+            when goingon $ serveConnection conn ii th addr transport set app
       where
         register = T.registerKillThread (timeoutManager ii) (connClose conn)
-        cancel = T.cancel
 
-    onOpen adr = increase counter >> settingsOnOpen set adr
+    onOpen adr = do
+      increase counter
+      settingsOnOpen set adr
     onClose :: SockAddr -> Bool -> IO ()
-    onClose adr _ = decrease counter >> settingsOnClose set adr
+    onClose adr _ = do
+      decrease counter
+      settingsOnClose set adr
 
 serveConnection ::
   Connection ->
@@ -343,7 +296,6 @@ serveConnection conn ii th origAddr transport settings app = do
     if S.length bs0 >= 4 && "PRI " `S.isPrefixOf` bs0
       then return (True, bs0)
       else return (False, bs0)
-  print (h2, bs)
   if settingsHTTP2Enabled settings && h2
     then do
       http2 settings ii conn transport app origAddr th bs

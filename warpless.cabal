@@ -58,6 +58,7 @@ Library
       Build-Depends: semigroups
   default-extensions:
     BangPatterns
+    BlockArguments
     DeriveAnyClass
     DerivingStrategies
     LambdaCase
