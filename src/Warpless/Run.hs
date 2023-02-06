@@ -121,14 +121,14 @@ run set app =
 runSocket :: Settings -> Socket -> Application -> IO ()
 runSocket set@Settings {settingsAccept = accept'} socket app = do
   settingsInstallShutdownHandler set (close socket)
-  let getConnMaker :: IO (Connection, Transport, SockAddr)
+  let getConnMaker :: IO (Connection, SockAddr)
       getConnMaker = do
         (s, sa) <- accept' socket
         setSocketCloseOnExec s
         -- NoDelay causes an error for AF_UNIX.
         setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
         conn <- socketConnection set s
-        pure (conn, TCP, sa)
+        pure (conn, sa)
   settingsBeforeMainLoop set
   counter <- newCounter
   withII set $ acceptConnection set getConnMaker app counter
@@ -171,7 +171,7 @@ withII set action =
 -- Our approach is explained in the comments below.
 acceptConnection ::
   Settings ->
-  IO (Connection, Transport, SockAddr) ->
+  IO (Connection, SockAddr) ->
   Application ->
   Counter ->
   InternalInfo ->
@@ -196,8 +196,8 @@ acceptConnection set getConnMaker app counter ii = do
       -- request.
       acceptNewConnection >>= \case
         Nothing -> pure ()
-        Just (conn, transport, addr) -> do
-          fork set conn transport addr app counter ii
+        Just (conn, addr) -> do
+          fork set conn addr app counter ii
           acceptLoop
 
     acceptNewConnection = do
@@ -220,13 +220,12 @@ acceptConnection set getConnMaker app counter ii = do
 fork ::
   Settings ->
   Connection ->
-  Transport ->
   SockAddr ->
   Application ->
   Counter ->
   InternalInfo ->
   IO ()
-fork set conn transport addr app counter ii =
+fork set conn addr app counter ii =
   settingsFork set \unmask ->
     -- Call the user-supplied on exception code if any
     -- exceptions are thrown.
@@ -268,7 +267,7 @@ fork set conn transport addr app counter ii =
           UnliftIO.bracket (onOpen addr) (onClose addr) \goingon ->
             -- Actually serve this connection.  bracket with closeConn
             -- above ensures the connection is closed.
-            when goingon $ serveConnection conn ii th addr transport set app
+            when goingon $ serveConnection conn ii th addr set app
       where
         register = T.registerKillThread (timeoutManager ii) (connClose conn)
 
@@ -285,11 +284,10 @@ serveConnection ::
   InternalInfo ->
   T.Handle ->
   SockAddr ->
-  Transport ->
   Settings ->
   Application ->
   IO ()
-serveConnection conn ii th origAddr transport settings app = do
+serveConnection conn ii th origAddr settings app = do
   -- fixme: Upgrading to HTTP/2 should be supported.
   (h2, bs) <- do
     bs0 <- connRecv conn
@@ -298,9 +296,9 @@ serveConnection conn ii th origAddr transport settings app = do
       else return (False, bs0)
   if settingsHTTP2Enabled settings && h2
     then do
-      http2 settings ii conn transport app origAddr th bs
+      http2 settings ii conn app origAddr th bs
     else do
-      http1 settings ii conn transport app origAddr th bs
+      http1 settings ii conn app origAddr th bs
 
 -- | Set flag FileCloseOnExec flag on a socket (on Unix)
 --

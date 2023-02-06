@@ -77,7 +77,6 @@ Library
     Warpless.File
     Warpless.FileInfoCache
     Warpless.HashMap
-    Warpless.Internal
     Warpless.HTTP1
     Warpless.HTTP2
     Warpless.HTTP2.File

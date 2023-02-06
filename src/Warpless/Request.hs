@@ -48,7 +48,6 @@ recvRequest ::
   SockAddr ->
   -- | Where HTTP request comes from.
   Source ->
-  Transport ->
   -- |
   -- 'Request' passed to 'Application',
   -- how many bytes remain to be consumed, if known
@@ -60,7 +59,7 @@ recvRequest ::
       IndexedHeader,
       IO ByteString
     )
-recvRequest firstRequest settings conn ii th addr src transport = do
+recvRequest firstRequest settings conn ii th addr src = do
   hdrlines <- headerLines (settingsMaxTotalHeaderLength settings) firstRequest src
   (method, unparsedPath, path, query, httpversion, hdr) <- parseHeaderLines hdrlines
   let idxhdr = indexRequestHeader hdr
@@ -89,7 +88,7 @@ recvRequest firstRequest settings conn ii th addr src transport = do
             rawQueryString = query,
             queryString = H.parseQuery query,
             requestHeaders = hdr,
-            isSecure = isTransportSecure transport,
+            isSecure = False,
             remoteHost = addr,
             requestBody = rbody',
             vault = vaultValue,

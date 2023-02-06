@@ -26,8 +26,8 @@ import Warpless.Types
 
 ----------------------------------------------------------------
 
-http2 :: S.Settings -> InternalInfo -> Connection -> Transport -> Application -> SockAddr -> T.Handle -> ByteString -> IO ()
-http2 settings ii conn transport app origAddr th bs = do
+http2 :: S.Settings -> InternalInfo -> Connection -> Application -> SockAddr -> T.Handle -> ByteString -> IO ()
+http2 settings ii conn app origAddr th bs = do
   istatus <- newIORef False
   rawRecvN <- makeReceiveN bs (connRecv conn) (connRecvBuf conn)
   writeBuffer <- readIORef $ connWriteBuffer conn
@@ -50,7 +50,7 @@ http2 settings ii conn transport app origAddr th bs = do
             confTimeoutManager = timeoutManager ii
           }
   setConnHTTP2 conn True
-  H2.run conf $ http2server settings ii transport origAddr app
+  H2.run conf $ http2server settings ii origAddr app
 
 -- | Converting WAI application to the server type of http2 library.
 --
@@ -58,11 +58,10 @@ http2 settings ii conn transport app origAddr th bs = do
 http2server ::
   S.Settings ->
   InternalInfo ->
-  Transport ->
   SockAddr ->
   Application ->
   H2.Server
-http2server settings ii transport addr app h2req0 aux0 response = do
+http2server settings ii addr app h2req0 aux0 response = do
   req <- toWAIRequest h2req0 aux0
   ref <- I.newIORef Nothing
   eResponseReceived <- UnliftIO.tryAny $
@@ -88,7 +87,7 @@ http2server settings ii transport addr app h2req0 aux0 response = do
       logResponse req st (fromIntegral @Int @Integer <$> msiz)
   return ()
   where
-    toWAIRequest h2req aux = toRequest ii settings addr hdr bdylen bdy th transport
+    toWAIRequest h2req aux = toRequest ii settings addr hdr bdylen bdy th
       where
         !hdr = H2.requestHeaders h2req
         !bdy = H2.getRequestBodyChunk h2req

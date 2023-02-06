@@ -15,9 +15,6 @@ module Warpless.Types
     readSource',
     leftoverSource,
     readLeftoverSource,
-    Transport (..),
-    isTransportSecure,
-    isTransportQUIC,
   )
 where
 
@@ -180,22 +177,3 @@ leftoverSource (Source ref _) bs = writeIORef ref bs
 
 readLeftoverSource :: Source -> IO ByteString
 readLeftoverSource (Source ref _) = readIORef ref
-
-----------------------------------------------------------------
-
--- | What kind of transport is used for this connection?
-data Transport
-  = -- | Plain channel: TCP
-    TCP
-  | QUIC
-      { quicNegotiatedProtocol :: !(Maybe ByteString),
-        quicChiperID :: !Word16
-      }
-
-isTransportSecure :: Transport -> Bool
-isTransportSecure TCP = False
-isTransportSecure _ = True
-
-isTransportQUIC :: Transport -> Bool
-isTransportQUIC QUIC {} = True
-isTransportQUIC _ = False

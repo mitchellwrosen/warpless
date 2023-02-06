@@ -24,17 +24,14 @@ import Warpless.Request (getFileInfoKey, pauseTimeoutKey)
 import Warpless.Settings qualified as S (Settings, settingsNoParsePath)
 import Warpless.Types
 
-type ToReq = (TokenHeaderList, ValueTable) -> Maybe Int -> IO ByteString -> T.Handle -> Transport -> IO Request
+type ToReq = (TokenHeaderList, ValueTable) -> Maybe Int -> IO ByteString -> T.Handle -> IO Request
 
 ----------------------------------------------------------------
 
-http30 :: H.HttpVersion
-http30 = H.HttpVersion 3 0
-
 toRequest :: InternalInfo -> S.Settings -> SockAddr -> ToReq
-toRequest ii settings addr ht bodylen body th transport = do
+toRequest ii settings addr ht bodylen body th = do
   ref <- newIORef Nothing
-  toRequest' ii settings addr ref ht bodylen body th transport
+  toRequest' ii settings addr ref ht bodylen body th
 
 toRequest' ::
   InternalInfo ->
@@ -42,18 +39,18 @@ toRequest' ::
   SockAddr ->
   IORef (Maybe HTTP2Data) ->
   ToReq
-toRequest' ii settings addr ref (reqths, reqvt) bodylen body th transport = return req
+toRequest' ii settings addr ref (reqths, reqvt) bodylen body th = return req
   where
     !req =
       Request
         { requestMethod = colonMethod,
-          httpVersion = if isTransportQUIC transport then http30 else H.http20,
+          httpVersion = H.http20,
           rawPathInfo = rawPath,
           pathInfo = H.decodePathSegments path,
           rawQueryString = query,
           queryString = H.parseQuery query,
           requestHeaders = headers,
-          isSecure = isTransportSecure transport,
+          isSecure = False,
           remoteHost = addr,
           requestBody = body,
           vault = vaultValue,

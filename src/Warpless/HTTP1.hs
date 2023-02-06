@@ -22,13 +22,13 @@ import Warpless.Response
 import Warpless.Settings
 import Warpless.Types
 
-http1 :: Settings -> InternalInfo -> Connection -> Transport -> Application -> SockAddr -> T.Handle -> ByteString -> IO ()
-http1 settings ii conn transport app origAddr th bs0 = do
+http1 :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> T.Handle -> ByteString -> IO ()
+http1 settings ii conn app origAddr th bs0 = do
   istatus <- newIORef True
   src <- mkSource (wrappedRecv conn istatus (settingsSlowlorisSize settings))
   leftoverSource src bs0
   addr <- getProxyProtocolAddr src
-  http1server settings ii conn transport app addr th istatus src
+  http1server settings ii conn app addr th istatus src
   where
     wrappedRecv Connection {connRecv = recv} istatus slowlorisSize = do
       bs <- recv
@@ -87,8 +87,8 @@ http1 settings ii conn transport app origAddr th bs0 = do
 
     decodeAscii = map (chr . fromEnum) . BS.unpack
 
-http1server :: Settings -> InternalInfo -> Connection -> Transport -> Application -> SockAddr -> T.Handle -> IORef Bool -> Source -> IO ()
-http1server settings ii conn transport app addr th istatus src =
+http1server :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> T.Handle -> IORef Bool -> Source -> IO ()
+http1server settings ii conn app addr th istatus src =
   loop True `UnliftIO.catchAny` handler
   where
     handler e
@@ -102,7 +102,7 @@ http1server settings ii conn transport app addr th istatus src =
           throwIO e
 
     loop firstRequest = do
-      (req, mremainingRef, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn ii th addr src transport
+      (req, mremainingRef, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn ii th addr src
       keepAlive <-
         processRequest settings ii conn app th istatus src req mremainingRef idxhdr nextBodyFlush
           `UnliftIO.catchAny` \e -> do
