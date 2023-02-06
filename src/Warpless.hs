@@ -35,7 +35,6 @@ module Warpless
     -- | All of these automatically serve the same 'Application' over HTTP\/1,
     -- HTTP\/1.1, and HTTP\/2.
     run,
-    runSocket,
 
     -- * Settings
     Settings (..),
@@ -58,11 +57,6 @@ module Warpless
     pauseTimeout,
     FileInfo (..),
     getFileInfo,
-    withApplication,
-    withApplicationSettings,
-    testWithApplication,
-    testWithApplicationSettings,
-    openFreePort,
 
     -- * Version
     warpVersion,
@@ -101,7 +95,6 @@ import Warpless.Response (warpVersion)
 import Warpless.Run
 import Warpless.Settings
 import Warpless.Types hiding (getFileInfo)
-import Warpless.WithApplication
 
 -- | Explicitly pause the slowloris timeout.
 --

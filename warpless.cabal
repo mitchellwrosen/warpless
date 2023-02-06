@@ -95,7 +95,6 @@ Library
     Warpless.SendFile
     Warpless.Settings
     Warpless.Types
-    Warpless.WithApplication
   ghc-options:
     -Weverything
     -Wno-all-missed-specialisations

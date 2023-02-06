@@ -1,6 +1,5 @@
 module Warpless.Run
   ( run,
-    runSocket,
   )
 where
 
@@ -98,39 +97,20 @@ socketConnection set s = do
 -- calls 'runSettingsSocket'.
 run :: Settings -> Application -> IO ()
 run set app =
-  UnliftIO.bracket
-    (bindPortTCP (settingsPort set) (settingsHost set))
-    close
-    ( \socket -> do
-        setSocketCloseOnExec socket
-        runSocket set socket app
-    )
-
--- | This installs a shutdown handler for the given socket and
--- calls 'runSettingsConnection' with the default connection setup action
--- which handles plain (non-cipher) HTTP.
--- When the listen socket in the second argument is closed, all live
--- connections are gracefully shut down.
---
--- The supplied socket can be a Unix named socket, which
--- can be used when reverse HTTP proxying into your application.
---
--- Note that the 'settingsPort' will still be passed to 'Application's via the
--- 'serverPort' record.
-runSocket :: Settings -> Socket -> Application -> IO ()
-runSocket set@Settings {settingsAccept = accept'} socket app = do
-  settingsInstallShutdownHandler set (close socket)
-  let getConn :: IO (Connection, SockAddr)
-      getConn = do
-        (s, sa) <- accept' socket
-        setSocketCloseOnExec s
-        -- NoDelay causes an error for AF_UNIX.
-        setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
-        conn <- socketConnection set s
-        pure (conn, sa)
-  settingsBeforeMainLoop set
-  counter <- newTVarIO 0
-  withII set $ acceptConnection set getConn app counter
+  UnliftIO.bracket (bindPortTCP (settingsPort set) (settingsHost set)) close \socket -> do
+    setSocketCloseOnExec socket
+    settingsInstallShutdownHandler set (close socket)
+    let getConn :: IO (Connection, SockAddr)
+        getConn = do
+          (s, sa) <- settingsAccept set socket
+          setSocketCloseOnExec s
+          -- NoDelay causes an error for AF_UNIX.
+          setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
+          conn <- socketConnection set s
+          pure (conn, sa)
+    settingsBeforeMainLoop set
+    counter <- newTVarIO 0
+    withII set $ acceptConnection set getConn app counter
 
 -- | Running an action with internal info.
 --
@@ -288,16 +268,10 @@ serveConnection ::
   IO ()
 serveConnection conn ii th origAddr settings app = do
   -- fixme: Upgrading to HTTP/2 should be supported.
-  (h2, bs) <- do
-    bs0 <- connRecv conn
-    if S.length bs0 >= 4 && "PRI " `S.isPrefixOf` bs0
-      then return (True, bs0)
-      else return (False, bs0)
-  if settingsHTTP2Enabled settings && h2
-    then do
-      http2 settings ii conn app origAddr th bs
-    else do
-      http1 settings ii conn app origAddr th bs
+  bs <- connRecv conn
+  if settingsHTTP2Enabled settings && S.length bs >= 4 && "PRI " `S.isPrefixOf` bs
+    then http2 settings ii conn app origAddr th bs
+    else http1 settings ii conn app origAddr th bs
 
 -- | Set flag FileCloseOnExec flag on a socket (on Unix)
 --
