@@ -18,7 +18,7 @@ import Data.IORef (newIORef, readIORef)
 import Data.Streaming.Network (bindPortTCP)
 import Foreign.C.Error (Errno (..), eCONNABORTED, eMFILE)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
-import Network.Socket (SockAddr, Socket, SocketOption (..), close, fdSocket, gracefulClose, setSocketOption, withSocketsDo)
+import Network.Socket (SockAddr, Socket, SocketOption (..), close, fdSocket, gracefulClose, setSocketOption)
 import Network.Socket.BufferPool
 import Network.Socket.ByteString qualified as Sock
 import Network.Wai
@@ -103,14 +103,13 @@ socketConnection set s = do
 -- calls 'runSettingsSocket'.
 run :: Settings -> Application -> IO ()
 run set app =
-  withSocketsDo $
-    UnliftIO.bracket
-      (bindPortTCP (settingsPort set) (settingsHost set))
-      close
-      ( \socket -> do
-          setSocketCloseOnExec socket
-          runSocket set socket app
-      )
+  UnliftIO.bracket
+    (bindPortTCP (settingsPort set) (settingsHost set))
+    close
+    ( \socket -> do
+        setSocketCloseOnExec socket
+        runSocket set socket app
+    )
 
 -- | This installs a shutdown handler for the given socket and
 -- calls 'runSettingsConnection' with the default connection setup action
