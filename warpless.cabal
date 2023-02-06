@@ -70,7 +70,6 @@ Library
     Paths_warpless
     Warpless.Buffer
     Warpless.Conduit
-    Warpless.Counter
     Warpless.Date
     Warpless.FdCache
     Warpless.File

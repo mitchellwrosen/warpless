@@ -4,6 +4,7 @@ module Warpless.Run
   )
 where
 
+import Control.Concurrent.STM
 import Control.Exception (SomeException (..), allowInterrupt)
 import Control.Exception qualified
 import Control.Monad (when)
@@ -24,7 +25,6 @@ import System.Timeout (timeout)
 import UnliftIO (toException)
 import UnliftIO qualified
 import Warpless.Buffer
-import Warpless.Counter
 import Warpless.Date qualified as D
 import Warpless.FdCache qualified as F
 import Warpless.FileInfoCache qualified as I
@@ -129,7 +129,7 @@ runSocket set@Settings {settingsAccept = accept'} socket app = do
         conn <- socketConnection set s
         pure (conn, sa)
   settingsBeforeMainLoop set
-  counter <- newCounter
+  counter <- newTVarIO 0
   withII set $ acceptConnection set getConn app counter
 
 -- | Running an action with internal info.
@@ -172,7 +172,7 @@ acceptConnection ::
   Settings ->
   IO (Connection, SockAddr) ->
   Application ->
-  Counter ->
+  TVar Int ->
   InternalInfo ->
   IO ()
 acceptConnection set getConnMaker app counter ii = do
@@ -221,7 +221,7 @@ fork ::
   Connection ->
   SockAddr ->
   Application ->
-  Counter ->
+  TVar Int ->
   InternalInfo ->
   IO ()
 fork set conn addr app counter ii =
@@ -271,11 +271,11 @@ fork set conn addr app counter ii =
         register = T.registerKillThread (timeoutManager ii) (connClose conn)
 
     onOpen adr = do
-      increase counter
+      atomically (modifyTVar' counter \n -> n + 1)
       settingsOnOpen set adr
     onClose :: SockAddr -> Bool -> IO ()
     onClose adr _ = do
-      decrease counter
+      atomically (modifyTVar' counter \n -> n - 1)
       settingsOnClose set adr
 
 serveConnection ::
@@ -309,10 +309,14 @@ setSocketCloseOnExec socket = do
   fd <- fdSocket socket
   F.setFileCloseOnExec $ fromIntegral fd
 
-gracefulShutdown :: Settings -> Counter -> IO ()
+gracefulShutdown :: Settings -> TVar Int -> IO ()
 gracefulShutdown set counter =
   case settingsGracefulShutdownTimeout set of
-    Nothing -> waitForZero counter
-    Just seconds -> void (timeout (seconds * microsPerSecond) (waitForZero counter))
+    Nothing -> waitForZero
+    Just seconds -> void (timeout (seconds * microsPerSecond) waitForZero)
   where
     microsPerSecond = 1_000_000 :: Int
+    waitForZero =
+      atomically do
+        n <- readTVar counter
+        when (n /= 0) retry
