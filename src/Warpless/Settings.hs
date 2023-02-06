@@ -11,6 +11,8 @@ module Warpless.Settings
   )
 where
 
+import Control.Monad (when)
+import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as C8
 import Data.Streaming.Network (HostPreference)
 import Data.Text qualified as T
@@ -27,7 +29,6 @@ import System.IO (stderr)
 import System.IO.Error (ioeGetErrorType)
 import System.TimeManager
 import UnliftIO (SomeException, fromException)
-import Warpless.Imports
 import Warpless.Types
 
 -- | Various Warp server settings. This is purposely kept as an abstract data

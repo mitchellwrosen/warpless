@@ -2,7 +2,6 @@ module Warpless.Header
   ( IndexedHeader,
     indexRequestHeader,
     RequestHeaderIndex (..),
-    requestMaxIndex,
     defaultIndexRequestHeader,
     indexResponseHeader,
     ResponseHeaderIndex (..),

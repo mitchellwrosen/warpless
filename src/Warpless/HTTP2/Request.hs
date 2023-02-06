@@ -6,9 +6,12 @@ module Warpless.HTTP2.Request
   )
 where
 
+import Control.Applicative ((<|>))
 import Control.Arrow (first)
+import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as C8
 import Data.IORef
+import Data.Maybe (fromJust)
 import Data.Vault.Lazy qualified as Vault
 import Network.HPACK
 import Network.HPACK.Token
@@ -19,7 +22,6 @@ import Network.Wai.Internal (Request (..))
 import System.IO.Unsafe (unsafePerformIO)
 import System.TimeManager qualified as T
 import Warpless.HTTP2.Types
-import Warpless.Imports
 import Warpless.Request (getFileInfoKey, pauseTimeoutKey)
 import Warpless.Settings qualified as S (Settings, settingsNoParsePath)
 import Warpless.Types

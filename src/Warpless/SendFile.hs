@@ -8,7 +8,10 @@ module Warpless.SendFile
   )
 where
 
+import Control.Monad (when)
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
+import Data.Word (Word8)
 import Foreign.C.Error (throwErrno)
 import Foreign.C.Types
 import Foreign.Ptr (Ptr, castPtr, plusPtr)
@@ -19,7 +22,6 @@ import System.Posix.Types
 import UnliftIO qualified
 import Warpless.Buffer
 import Warpless.FdCache (closeFile, openFile)
-import Warpless.Imports
 import Warpless.Types
 
 ----------------------------------------------------------------

@@ -3,11 +3,13 @@ module Warpless.PackInt
   )
 where
 
+import Control.Monad (when)
+import Data.ByteString (ByteString)
 import Data.ByteString.Internal (unsafeCreate)
+import Data.Word8 (Word8)
 import Foreign.Ptr (Ptr, plusPtr)
 import Foreign.Storable (poke)
 import Network.HTTP.Types qualified as H
-import Warpless.Imports
 
 -- |
 --

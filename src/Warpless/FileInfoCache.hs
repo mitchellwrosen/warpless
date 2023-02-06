@@ -8,15 +8,14 @@ module Warpless.FileInfoCache
 where
 
 import Control.Reaper
+import Data.ByteString (ByteString)
 import Network.HTTP.Date
 import System.Posix.Files
 import System.Posix.Types (FileOffset)
 import UnliftIO qualified (bracket, onException, throwIO)
 import Warpless.HashMap (HashMap)
+import Data.Functor (void)
 import Warpless.HashMap qualified as M
-import Warpless.Imports
-
-----------------------------------------------------------------
 
 -- | File information.
 data FileInfo = FileInfo

@@ -7,10 +7,12 @@ module Warpless.Conduit
   )
 where
 
+import Control.Monad (when)
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
 import Data.IORef qualified as I
+import Data.Word (Word8)
 import UnliftIO (assert, throwIO)
-import Warpless.Imports
 import Warpless.Types
 
 ----------------------------------------------------------------
@@ -119,7 +121,7 @@ readCSource (CSource src ref) = do
       case S.uncons bs of
         Nothing -> do
           bs2 <- readSource' src
-          unless (S.null bs2) $ dropLF bs2
+          when (not (S.null bs2)) $ dropLF bs2
         Just (10, bs') -> leftoverSource src bs'
         Just _ -> leftoverSource src bs
 

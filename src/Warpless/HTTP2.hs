@@ -2,10 +2,11 @@
 
 module Warpless.HTTP2
   ( http2,
-    http2server,
   )
 where
 
+import Control.Monad (when)
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.IORef qualified as I
@@ -20,7 +21,6 @@ import Warpless.HTTP2.File
 import Warpless.HTTP2.PushPromise
 import Warpless.HTTP2.Request
 import Warpless.HTTP2.Response
-import Warpless.Imports
 import Warpless.Settings qualified as S
 import Warpless.Types
 
@@ -107,7 +107,7 @@ http2server settings ii addr app h2req0 aux0 response = do
 wrappedRecvN :: T.Handle -> IORef Bool -> Int -> (BufSize -> IO ByteString) -> (BufSize -> IO ByteString)
 wrappedRecvN th istatus slowlorisSize readN bufsize = do
   bs <- UnliftIO.handleAny handler $ readN bufsize
-  unless (BS.null bs) $ do
+  when (not (BS.null bs)) do
     writeIORef istatus True
     -- TODO: think about the slowloris protection in HTTP2: current code
     -- might open a slow-loris attack vector. Rather than timing we should

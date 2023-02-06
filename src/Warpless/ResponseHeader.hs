@@ -1,14 +1,16 @@
 module Warpless.ResponseHeader (composeHeader) where
 
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
 import Data.ByteString.Internal (create)
 import Data.CaseInsensitive qualified as CI
+import Data.Functor (void)
 import Data.List (foldl')
+import Data.Word (Word8)
 import Foreign.Ptr
 import GHC.Storable
 import Network.HTTP.Types qualified as H
 import Network.Socket.BufferPool (copy)
-import Warpless.Imports
 
 ----------------------------------------------------------------
 

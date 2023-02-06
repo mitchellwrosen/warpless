@@ -10,7 +10,9 @@ module Warpless.Request
 where
 
 import Control.Concurrent qualified as Conc (yield)
+import Control.Monad (when)
 import Data.Array ((!))
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
 import Data.ByteString.Unsafe qualified as SU
 import Data.CaseInsensitive qualified as CI
@@ -26,7 +28,6 @@ import UnliftIO (Exception, throwIO)
 import Warpless.Conduit
 import Warpless.FileInfoCache
 import Warpless.Header
-import Warpless.Imports hiding (readInt)
 import Warpless.ReadInt
 import Warpless.RequestHeader
 import Warpless.Settings (Settings, settingsMaxTotalHeaderLength, settingsNoParsePath)

@@ -3,6 +3,7 @@ module Warpless.HTTP2.PushPromise
   )
 where
 
+import Data.Maybe (catMaybes)
 import Network.HTTP.Types qualified as H
 import Network.HTTP2.Server qualified as H2
 import Network.Wai
@@ -10,7 +11,6 @@ import UnliftIO qualified
 import Warpless.FileInfoCache
 import Warpless.HTTP2.Request (getHTTP2Data)
 import Warpless.HTTP2.Types
-import Warpless.Imports
 import Warpless.Types
 
 fromPushPromises :: InternalInfo -> Request -> IO [H2.PushPromise]

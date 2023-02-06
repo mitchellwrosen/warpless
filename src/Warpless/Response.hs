@@ -9,7 +9,9 @@ module Warpless.Response
   )
 where
 
+import Control.Monad (when)
 import Data.Array ((!))
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
 import Data.ByteString.Builder (Builder, byteString)
 import Data.ByteString.Builder.Extra (flush)
@@ -18,6 +20,7 @@ import Data.ByteString.Char8 qualified as C8
 import Data.CaseInsensitive qualified as CI
 import Data.Function (on)
 import Data.List (deleteBy)
+import Data.Maybe (isJust, mapMaybe)
 import Data.Streaming.ByteString.Builder (newByteStringBuilderRecv, reuseBufferStrategy)
 import Data.Version (showVersion)
 import Data.Word8 (_cr, _lf)
@@ -33,7 +36,6 @@ import Warpless.Date qualified as D
 import Warpless.File
 import Warpless.Header
 import Warpless.IO (toBufIOWith)
-import Warpless.Imports
 import Warpless.ResponseHeader
 import Warpless.Settings
 import Warpless.Types
@@ -234,7 +236,7 @@ sendRsp conn _ th ver s hs _ _ (RspStream streamingBody needsChunked) = do
         popper <- recv builder
         let loop = do
               bs <- popper
-              unless (S.null bs) $ do
+              when (not (S.null bs)) do
                 sendFragment conn th bs
                 loop
         loop
@@ -256,9 +258,11 @@ sendRsp conn _ th _ _ _ _ _ (RspRaw withApp src) = do
   where
     recv = do
       bs <- src
-      unless (S.null bs) $ T.tickle th
+      when (not (S.null bs)) (T.tickle th)
       return bs
-    send bs = connSendAll conn bs >> T.tickle th
+    send bs = do
+      connSendAll conn bs
+      T.tickle th
 
 ----------------------------------------------------------------
 

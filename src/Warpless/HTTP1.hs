@@ -4,6 +4,9 @@ module Warpless.HTTP1
 where
 
 import Control.Concurrent qualified as Conc (yield)
+import Control.Exception (SomeException, fromException, throwIO)
+import Control.Monad (when)
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.Char (chr)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
@@ -12,10 +15,8 @@ import Network.Socket (SockAddr (SockAddrInet, SockAddrInet6))
 import Network.Wai
 import Network.Wai.Internal (ResponseReceived (ResponseReceived))
 import System.TimeManager qualified as T
-import UnliftIO (SomeException, fromException, throwIO)
 import UnliftIO qualified
 import Warpless.Header
-import Warpless.Imports hiding (readInt)
 import Warpless.ReadInt
 import Warpless.Request
 import Warpless.Response
@@ -32,7 +33,7 @@ http1 settings ii conn app origAddr th bs0 = do
   where
     wrappedRecv Connection {connRecv = recv} istatus slowlorisSize = do
       bs <- recv
-      unless (BS.null bs) $ do
+      when (not (BS.null bs)) do
         writeIORef istatus True
         when (BS.length bs >= slowlorisSize) $ T.tickle th
       return bs
@@ -206,7 +207,7 @@ flushEntireBody src =
   where
     loop = do
       bs <- src
-      unless (BS.null bs) loop
+      when (not (BS.null bs)) loop
 
 flushBody ::
   -- | get next chunk

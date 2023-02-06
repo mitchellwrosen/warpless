@@ -14,10 +14,10 @@ module Warpless.Types
     readSource,
     readSource',
     leftoverSource,
-    readLeftoverSource,
   )
 where
 
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Network.Socket.BufferPool
@@ -27,7 +27,6 @@ import UnliftIO qualified
 import Warpless.Date qualified as D
 import Warpless.FdCache qualified as F
 import Warpless.FileInfoCache qualified as I
-import Warpless.Imports
 
 ----------------------------------------------------------------
 
@@ -174,6 +173,3 @@ readSource' (Source _ func) = func
 
 leftoverSource :: Source -> ByteString -> IO ()
 leftoverSource (Source ref _) bs = writeIORef ref bs
-
-readLeftoverSource :: Source -> IO ByteString
-readLeftoverSource (Source ref _) = readIORef ref

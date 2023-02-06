@@ -7,13 +7,13 @@ module Warpless.Buffer
   )
 where
 
+import Data.ByteString.Internal (ByteString (..))
 import Data.IORef (IORef, readIORef)
 import Data.Streaming.ByteString.Builder.Buffer qualified as B (Buffer (..))
 import Foreign.ForeignPtr
 import Foreign.Marshal.Alloc (free, mallocBytes)
 import Foreign.Ptr (plusPtr)
 import Network.Socket.BufferPool
-import Warpless.Imports
 import Warpless.Types
 
 ----------------------------------------------------------------

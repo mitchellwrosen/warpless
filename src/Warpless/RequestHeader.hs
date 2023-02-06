@@ -3,17 +3,19 @@ module Warpless.RequestHeader
   )
 where
 
+import Control.Monad (when)
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
 import Data.ByteString.Char8 qualified as C8 (unpack)
-import Data.ByteString.Internal (memchr)
+import Data.ByteString.Internal (ByteString (..), memchr)
 import Data.CaseInsensitive qualified as CI
+import Data.Word (Word8)
 import Foreign.C.Types (CSize)
 import Foreign.ForeignPtr (withForeignPtr)
 import Foreign.Ptr (Ptr, minusPtr, nullPtr, plusPtr)
 import Foreign.Storable (peek)
 import Network.HTTP.Types qualified as H
 import UnliftIO (throwIO)
-import Warpless.Imports
 import Warpless.Types
 
 parseHeaderLines ::

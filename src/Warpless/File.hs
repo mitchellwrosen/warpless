@@ -6,15 +6,18 @@ module Warpless.File
   )
 where
 
+import Control.Applicative ((<|>))
 import Data.Array ((!))
+import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as C8 (pack)
+import Data.Maybe (fromMaybe, isJust)
 import Network.HTTP.Date
 import Network.HTTP.Types qualified as H
 import Network.HTTP.Types.Header qualified as H
 import Network.Wai
+import Numeric (showInt)
 import Warpless.FileInfoCache qualified as I
 import Warpless.Header
-import Warpless.Imports
 import Warpless.PackInt
 
 ----------------------------------------------------------------

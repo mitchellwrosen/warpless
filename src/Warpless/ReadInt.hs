@@ -7,8 +7,10 @@ module Warpless.ReadInt
   )
 where
 
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
-import Warpless.Imports hiding (readInt)
+import Data.Int (Int64)
+import Data.Word (Word8)
 
 {-# INLINE readInt #-}
 readInt :: Integral a => ByteString -> a

@@ -6,10 +6,10 @@ module Warpless.HTTP2.Types
   )
 where
 
+import Data.ByteString (ByteString)
 import Network.HTTP.Types qualified as H
 import Network.HTTP2.Frame
 import Network.HTTP2.Server qualified as H2
-import Warpless.Imports
 
 -- | HTTP/2 specific data.
 --

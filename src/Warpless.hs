@@ -1,5 +1,3 @@
-{-# OPTIONS_GHC -fno-warn-deprecations #-}
-
 ---------------------------------------------------------
 --
 -- Module        : Warpless
@@ -90,6 +88,7 @@ module Warpless
   )
 where
 
+import Data.Maybe (fromMaybe)
 import Data.Streaming.Network (HostPreference)
 import Data.Vault.Lazy qualified as Vault
 import Network.Wai (Request, vault)
@@ -97,7 +96,6 @@ import UnliftIO.Exception (throwIO)
 import Warpless.FileInfoCache
 import Warpless.HTTP2.Request (getHTTP2Data, modifyHTTP2Data, setHTTP2Data)
 import Warpless.HTTP2.Types
-import Warpless.Imports
 import Warpless.Request
 import Warpless.Response (warpVersion)
 import Warpless.Run

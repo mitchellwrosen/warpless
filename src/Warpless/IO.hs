@@ -4,11 +4,12 @@ module Warpless.IO
 where
 
 import Control.Exception (mask_)
+import Control.Monad (when)
+import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder.Extra (Next (Chunk, Done, More), runBuilder)
 import Data.IORef (IORef, readIORef, writeIORef)
 import Warpless.Buffer
-import Warpless.Imports
 import Warpless.Types
 
 toBufIOWith :: Int -> IORef WriteBuffer -> (ByteString -> IO ()) -> Builder -> IO ()

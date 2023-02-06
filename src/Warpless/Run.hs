@@ -1,15 +1,15 @@
 module Warpless.Run
   ( run,
     runSocket,
-    socketConnection,
-    setSocketCloseOnExec,
-    withII,
   )
 where
 
 import Control.Exception (SomeException (..), allowInterrupt)
 import Control.Exception qualified
+import Control.Monad (when)
+import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
+import Data.Functor (void)
 import Data.IORef (newIORef, readIORef)
 import Data.Streaming.Network (bindPortTCP)
 import Foreign.C.Error (Errno (..), eCONNABORTED, eMFILE)
@@ -30,7 +30,6 @@ import Warpless.FdCache qualified as F
 import Warpless.FileInfoCache qualified as I
 import Warpless.HTTP1 (http1)
 import Warpless.HTTP2 (http2)
-import Warpless.Imports hiding (readInt)
 import Warpless.SendFile
 import Warpless.Settings
 import Warpless.Types
@@ -121,8 +120,8 @@ run set app =
 runSocket :: Settings -> Socket -> Application -> IO ()
 runSocket set@Settings {settingsAccept = accept'} socket app = do
   settingsInstallShutdownHandler set (close socket)
-  let getConnMaker :: IO (Connection, SockAddr)
-      getConnMaker = do
+  let getConn :: IO (Connection, SockAddr)
+      getConn = do
         (s, sa) <- accept' socket
         setSocketCloseOnExec s
         -- NoDelay causes an error for AF_UNIX.
@@ -131,7 +130,7 @@ runSocket set@Settings {settingsAccept = accept'} socket app = do
         pure (conn, sa)
   settingsBeforeMainLoop set
   counter <- newCounter
-  withII set $ acceptConnection set getConnMaker app counter
+  withII set $ acceptConnection set getConn app counter
 
 -- | Running an action with internal info.
 --
@@ -313,9 +312,7 @@ setSocketCloseOnExec socket = do
 gracefulShutdown :: Settings -> Counter -> IO ()
 gracefulShutdown set counter =
   case settingsGracefulShutdownTimeout set of
-    Nothing ->
-      waitForZero counter
-    (Just seconds) ->
-      void (timeout (seconds * microsPerSecond) (waitForZero counter))
-      where
-        microsPerSecond = 1_000_000 :: Int
+    Nothing -> waitForZero counter
+    Just seconds -> void (timeout (seconds * microsPerSecond) (waitForZero counter))
+  where
+    microsPerSecond = 1_000_000 :: Int
