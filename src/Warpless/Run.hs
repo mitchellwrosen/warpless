@@ -3,7 +3,6 @@ module Warpless.Run
   )
 where
 
-import Control.Concurrent.STM
 import Control.Exception (SomeException (..), allowInterrupt, throwIO)
 import Control.Exception qualified
 import Control.Monad (forever, when)
@@ -96,7 +95,6 @@ run set app =
   UnliftIO.bracket (bindPortTCP (settingsPort set) (settingsHost set)) close \socket -> do
     setSocketCloseOnExec socket
     settingsBeforeMainLoop set
-    counter <- newTVarIO 0
     withTimeoutManager \tm ->
       D.withDateCache \dc ->
         F.withFdCache fdCacheDurationInSeconds \fdc ->
@@ -110,7 +108,7 @@ run set app =
                 -- NoDelay causes an error for AF_UNIX.
                 setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
                 conn <- socketConnection set s
-                fork set conn addr app counter ii
+                fork set conn addr app ii
   where
     !fdCacheDurationInSeconds = settingsFdCacheDuration set * 1_000_000
     !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration set * 1_000_000
@@ -128,10 +126,9 @@ fork ::
   Connection ->
   SockAddr ->
   Application ->
-  TVar Int ->
   InternalInfo ->
   IO ()
-fork set conn addr app counter ii =
+fork set conn addr app ii =
   settingsFork set \unmask ->
     -- Call the user-supplied on exception code if any
     -- exceptions are thrown.
@@ -170,7 +167,7 @@ fork set conn addr app counter ii =
         unmask $
           -- Call the user-supplied code for connection open and
           -- close events
-          UnliftIO.bracket (onOpen addr) (onClose addr) \goingon ->
+          UnliftIO.bracket (settingsOnOpen set addr) (\_ -> settingsOnClose set addr) \goingon ->
             -- Actually serve this connection.  bracket with closeConn
             -- above ensures the connection is closed.
             when goingon do
@@ -181,14 +178,6 @@ fork set conn addr app counter ii =
                 else http1 set ii conn app addr th bs
       where
         register = T.registerKillThread (timeoutManager ii) (connClose conn)
-
-    onOpen adr = do
-      atomically (modifyTVar' counter \n -> n + 1)
-      settingsOnOpen set adr
-    onClose :: SockAddr -> Bool -> IO ()
-    onClose adr _ = do
-      atomically (modifyTVar' counter \n -> n - 1)
-      settingsOnClose set adr
 
 -- | Set flag FileCloseOnExec flag on a socket (on Unix)
 --
