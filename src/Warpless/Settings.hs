@@ -18,9 +18,7 @@ import Data.Streaming.Network (HostPreference)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
 import Data.Version (showVersion)
-import GHC.IO (IO (IO), unsafeUnmask)
 import GHC.IO.Exception (AsyncException (ThreadKilled), IOErrorType (..))
-import GHC.Prim (fork#)
 import Network.HTTP.Types qualified as H
 import Network.Socket (SockAddr, Socket, accept)
 import Network.Wai
@@ -51,12 +49,6 @@ data Settings = Settings
     --
     -- Since 2.0.3
     settingsOnExceptionResponse :: !(SomeException -> Response),
-    -- | What to do when a connection is opened. When 'False' is returned, the
-    -- connection is closed immediately. Otherwise, the connection is going on.
-    -- Default: always returns 'True'.
-    settingsOnOpen :: !(SockAddr -> IO Bool),
-    -- | What to do when a connection is closed. Default: do nothing.
-    settingsOnClose :: !(SockAddr -> IO ()),
     -- | "Slow-loris" timeout lower-bound value in seconds.  Connections where
     -- network progress is made less frequently than this may be closed.  In
     -- practice many connections may be allowed to go without progress for up to
@@ -65,9 +57,6 @@ data Settings = Settings
     --
     -- Default value: 30
     settingsTimeout :: !Int,
-    -- | Use an existing timeout manager instead of spawning a new one. If used,
-    -- 'settingsTimeout' is ignored.
-    settingsManager :: !(Maybe Manager),
     -- | Cache duration time of file descriptors in seconds. 0 means that the cache mechanism is not used.
     --
     -- The FD cache is an optimization that is useful for servers dealing with
@@ -98,13 +87,6 @@ data Settings = Settings
     --
     -- Default: do nothing.
     settingsBeforeMainLoop :: !(IO ()),
-    -- | Code to fork a new thread to accept a connection.
-    --
-    -- This may be useful if you need OS bound threads, or if
-    -- you wish to develop an alternative threading model.
-    --
-    -- Default: void . forkIOWithUnmask
-    settingsFork :: !(((forall a. IO a -> IO a) -> IO ()) -> IO ()),
     -- | Code to accept a new connection.
     --
     -- Useful if you need to provide connected sockets from something other
@@ -210,14 +192,10 @@ defaultSettings =
       settingsHost = "*4",
       settingsOnException = defaultOnException,
       settingsOnExceptionResponse = defaultOnExceptionResponse,
-      settingsOnOpen = const $ return True,
-      settingsOnClose = const $ return (),
       settingsTimeout = 30,
-      settingsManager = Nothing,
       settingsFdCacheDuration = 0,
       settingsFileInfoCacheDuration = 0,
       settingsBeforeMainLoop = return (),
-      settingsFork = defaultFork,
       settingsAccept = defaultAccept,
       settingsNoParsePath = False,
       settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warpless.version,
@@ -289,23 +267,6 @@ defaultOnExceptionResponse e
         H.internalServerError500
         [(H.hContentType, "text/plain; charset=utf-8")]
         "Something went wrong"
-
--- | Similar to @forkIOWithUnmask@, but does not set up the default exception handler.
---
--- Since Warp will always install its own exception handler in forked threads, this provides
--- a minor optimization.
---
--- For inspiration of this function, see @rawForkIO@ in the @async@ package.
---
--- @since 3.3.17
-defaultFork :: ((forall a. IO a -> IO a) -> IO ()) -> IO ()
-defaultFork io =
-  IO $ \s0 ->
-    case io unsafeUnmask of
-      IO io' ->
-        case (fork# io' s0) of
-          (# s1, _tid #) ->
-            (# s1, () #)
 
 -- | Standard "accept" call for a listening socket.
 --

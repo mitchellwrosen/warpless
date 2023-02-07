@@ -88,7 +88,16 @@ http1 settings ii conn app origAddr th bs0 = do
 
     decodeAscii = map (chr . fromEnum) . BS.unpack
 
-http1server :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> T.Handle -> IORef Bool -> Source -> IO ()
+http1server ::
+  Settings ->
+  InternalInfo ->
+  Connection ->
+  Application ->
+  SockAddr ->
+  T.Handle ->
+  IORef Bool ->
+  Source ->
+  IO ()
 http1server settings ii conn app addr th istatus src =
   loop True `UnliftIO.catchAny` handler
   where
@@ -122,7 +131,19 @@ http1server settings ii conn app addr th istatus src =
 
       when keepAlive $ loop False
 
-processRequest :: Settings -> InternalInfo -> Connection -> Application -> T.Handle -> IORef Bool -> Source -> Request -> Maybe (IORef Int) -> IndexedHeader -> IO ByteString -> IO Bool
+processRequest ::
+  Settings ->
+  InternalInfo ->
+  Connection ->
+  Application ->
+  T.Handle ->
+  IORef Bool ->
+  Source ->
+  Request ->
+  Maybe (IORef Int) ->
+  IndexedHeader ->
+  IO ByteString ->
+  IO Bool
 processRequest settings ii conn app th istatus src req mremainingRef idxhdr nextBodyFlush = do
   -- Let the application run for as long as it wants
   T.pause th
@@ -131,16 +152,17 @@ processRequest settings ii conn app th istatus src req mremainingRef idxhdr next
   -- creating the request, we need to make sure that we don't get
   -- an async exception before calling the ResponseSource.
   keepAliveRef <- newIORef $ error "keepAliveRef not filled"
-  r <- UnliftIO.tryAny $
-    app req $ \res -> do
-      T.resume th
-      -- FIXME consider forcing evaluation of the res here to
-      -- send more meaningful error messages to the user.
-      -- However, it may affect performance.
-      writeIORef istatus False
-      keepAlive <- sendResponse settings conn ii th req idxhdr (readSource src) res
-      writeIORef keepAliveRef keepAlive
-      return ResponseReceived
+  r <-
+    UnliftIO.tryAny $
+      app req \res -> do
+        T.resume th
+        -- FIXME consider forcing evaluation of the res here to
+        -- send more meaningful error messages to the user.
+        -- However, it may affect performance.
+        writeIORef istatus False
+        keepAlive <- sendResponse settings conn ii th req idxhdr (readSource src) res
+        writeIORef keepAliveRef keepAlive
+        return ResponseReceived
   case r of
     Right ResponseReceived -> return ()
     Left (e :: SomeException)
