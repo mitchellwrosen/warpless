@@ -4,15 +4,13 @@ module Warpless.Run
 where
 
 import Control.Concurrent.STM
-import Control.Exception (SomeException (..), allowInterrupt)
+import Control.Exception (SomeException (..), allowInterrupt, throwIO)
 import Control.Exception qualified
-import Control.Monad (when)
+import Control.Monad (forever, when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
-import Data.Functor (void)
 import Data.IORef (newIORef, readIORef)
 import Data.Streaming.Network (bindPortTCP)
-import Foreign.C.Error (Errno (..), eCONNABORTED, eMFILE)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import Network.Socket (SockAddr, Socket, SocketOption (..), close, fdSocket, gracefulClose, setSocketOption)
 import Network.Socket.BufferPool
@@ -20,8 +18,6 @@ import Network.Socket.ByteString qualified as Sock
 import Network.Wai
 import System.IO.Error (ioeGetErrorType)
 import System.TimeManager qualified as T
-import System.Timeout (timeout)
-import UnliftIO (toException)
 import UnliftIO qualified
 import Warpless.Buffer
 import Warpless.Date qualified as D
@@ -65,7 +61,7 @@ socketConnection set s = do
         handler :: IOException -> IO ByteString
         handler e
           | ioeGetErrorType e == InvalidArgument = return ""
-          | otherwise = UnliftIO.throwIO e
+          | otherwise = throwIO e
 
     sendfile writeBufferRef fid offset len hook headers = do
       writeBuffer <- readIORef writeBufferRef
@@ -99,100 +95,31 @@ run :: Settings -> Application -> IO ()
 run set app =
   UnliftIO.bracket (bindPortTCP (settingsPort set) (settingsHost set)) close \socket -> do
     setSocketCloseOnExec socket
-    settingsInstallShutdownHandler set (close socket)
-    let getConn :: IO (Connection, SockAddr)
-        getConn = do
-          (s, sa) <- settingsAccept set socket
-          setSocketCloseOnExec s
-          -- NoDelay causes an error for AF_UNIX.
-          setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
-          conn <- socketConnection set s
-          pure (conn, sa)
     settingsBeforeMainLoop set
     counter <- newTVarIO 0
-    withII set $ acceptConnection set getConn app counter
-
--- | Running an action with internal info.
---
--- Since 3.3.11
-withII :: Settings -> (InternalInfo -> IO a) -> IO a
-withII set action =
-  withTimeoutManager \tm ->
-    D.withDateCache \dc ->
-      F.withFdCache fdCacheDurationInSeconds \fdc ->
-        I.withFileInfoCache fdFileInfoDurationInSeconds \fic ->
-          action (InternalInfo tm dc fdc fic)
+    withTimeoutManager \tm ->
+      D.withDateCache \dc ->
+        F.withFdCache fdCacheDurationInSeconds \fdc ->
+          I.withFileInfoCache fdFileInfoDurationInSeconds \fic -> do
+            let ii = InternalInfo tm dc fdc fic
+            UnliftIO.mask_ $
+              forever do
+                allowInterrupt
+                (s, addr) <- settingsAccept set socket
+                setSocketCloseOnExec s
+                -- NoDelay causes an error for AF_UNIX.
+                setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
+                conn <- socketConnection set s
+                fork set conn addr app counter ii
   where
-    !fdCacheDurationInSeconds = settingsFdCacheDuration set * 1000000
-    !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration set * 1000000
-    !timeoutInSeconds = settingsTimeout set * 1000000
+    !fdCacheDurationInSeconds = settingsFdCacheDuration set * 1_000_000
+    !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration set * 1_000_000
+    timeoutInSeconds = settingsTimeout set * 1_000_000
     withTimeoutManager :: forall r. (T.Manager -> IO r) -> IO r
-    withTimeoutManager f = case settingsManager set of
-      Just tm -> f tm
-      Nothing ->
-        UnliftIO.bracket
-          (T.initialize timeoutInSeconds)
-          T.stopManager
-          f
-
--- Note that there is a thorough discussion of the exception safety of the
--- following code at: https://github.com/yesodweb/wai/issues/146
---
--- We need to make sure of two things:
---
--- 1. Asynchronous exceptions are not blocked entirely in the main loop.
---    Doing so would make it impossible to kill the Warp thread.
---
--- 2. Once a connection maker is received via acceptNewConnection, the
---    connection is guaranteed to be closed, even in the presence of
---    async exceptions.
---
--- Our approach is explained in the comments below.
-acceptConnection ::
-  Settings ->
-  IO (Connection, SockAddr) ->
-  Application ->
-  TVar Int ->
-  InternalInfo ->
-  IO ()
-acceptConnection set getConnMaker app counter ii = do
-  -- First mask all exceptions in acceptLoop. This is necessary to
-  -- ensure that no async exception is throw between the call to
-  -- acceptNewConnection and the registering of connClose.
-  --
-  -- acceptLoop can be broken by closing the listening socket.
-  UnliftIO.mask_ acceptLoop
-  -- In some cases, we want to stop Warp here without graceful shutdown.
-  -- So, async exceptions are allowed here.
-  -- That's why `finally` is not used.
-  gracefulShutdown set counter
-  where
-    acceptLoop = do
-      -- Allow async exceptions before receiving the next connection maker.
-      allowInterrupt
-
-      -- acceptNewConnection will try to receive the next incoming
-      -- request.
-      acceptNewConnection >>= \case
-        Nothing -> pure ()
-        Just (conn, addr) -> do
-          fork set conn addr app counter ii
-          acceptLoop
-
-    acceptNewConnection = do
-      ex <- UnliftIO.tryIO getConnMaker
-      case ex of
-        Right x -> return $ Just x
-        Left e -> do
-          let getErrno (Errno cInt) = cInt
-              eConnAborted = getErrno eCONNABORTED
-              eMfile = getErrno eMFILE
-              merrno = ioe_errno e
-          if merrno == Just eConnAborted || merrno == Just eMfile
-            then acceptNewConnection
-            else do
-              settingsOnException set Nothing $ toException e
-              return Nothing
+    withTimeoutManager f =
+      case settingsManager set of
+        Just tm -> f tm
+        Nothing -> UnliftIO.bracket (T.initialize timeoutInSeconds) T.stopManager f
 
 -- Fork a new worker thread for this connection maker, and ask for a
 -- function to unmask (i.e., allow async exceptions to be thrown).
@@ -246,7 +173,12 @@ fork set conn addr app counter ii =
           UnliftIO.bracket (onOpen addr) (onClose addr) \goingon ->
             -- Actually serve this connection.  bracket with closeConn
             -- above ensures the connection is closed.
-            when goingon $ serveConnection conn ii th addr set app
+            when goingon do
+              -- fixme: Upgrading to HTTP/2 should be supported.
+              bs <- connRecv conn
+              if settingsHTTP2Enabled set && S.length bs >= 4 && "PRI " `S.isPrefixOf` bs
+                then http2 set ii conn app addr th bs
+                else http1 set ii conn app addr th bs
       where
         register = T.registerKillThread (timeoutManager ii) (connClose conn)
 
@@ -258,21 +190,6 @@ fork set conn addr app counter ii =
       atomically (modifyTVar' counter \n -> n - 1)
       settingsOnClose set adr
 
-serveConnection ::
-  Connection ->
-  InternalInfo ->
-  T.Handle ->
-  SockAddr ->
-  Settings ->
-  Application ->
-  IO ()
-serveConnection conn ii th origAddr settings app = do
-  -- fixme: Upgrading to HTTP/2 should be supported.
-  bs <- connRecv conn
-  if settingsHTTP2Enabled settings && S.length bs >= 4 && "PRI " `S.isPrefixOf` bs
-    then http2 settings ii conn app origAddr th bs
-    else http1 settings ii conn app origAddr th bs
-
 -- | Set flag FileCloseOnExec flag on a socket (on Unix)
 --
 -- Copied from: https://github.com/mzero/plush/blob/master/src/Plush/Server/Warp.hs
@@ -282,15 +199,3 @@ setSocketCloseOnExec :: Socket -> IO ()
 setSocketCloseOnExec socket = do
   fd <- fdSocket socket
   F.setFileCloseOnExec $ fromIntegral fd
-
-gracefulShutdown :: Settings -> TVar Int -> IO ()
-gracefulShutdown set counter =
-  case settingsGracefulShutdownTimeout set of
-    Nothing -> waitForZero
-    Just seconds -> void (timeout (seconds * microsPerSecond) waitForZero)
-  where
-    microsPerSecond = 1_000_000 :: Int
-    waitForZero =
-      atomically do
-        n <- readTVar counter
-        when (n /= 0) retry

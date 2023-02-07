@@ -118,36 +118,6 @@ data Settings = Settings
     --
     -- Default: False
     settingsNoParsePath :: !Bool,
-    -- | A code to install shutdown handler.
-    --
-    -- For instance, this code should set up a UNIX signal
-    -- handler. The handler should call the first argument,
-    -- which closes the listen socket, at shutdown.
-    --
-    -- Example usage:
-    --
-    -- @
-    -- settings :: IO () -> 'Settings'
-    -- settings shutdownAction = 'setInstallShutdownHandler' shutdownHandler 'defaultSettings'
-    --   __where__
-    --     shutdownHandler closeSocket =
-    --       void $ 'System.Posix.Signals.installHandler' 'System.Posix.Signals.sigTERM' ('System.Posix.Signals.Catch' $ shutdownAction >> closeSocket) 'Nothing'
-    -- @
-    --
-    -- Note that by default, the graceful shutdown mode lasts indefinitely
-    -- (see 'setGracefulShutdownTimeout'). If you install a signal handler as above,
-    -- upon receiving that signal, the custom shutdown action will run /and/ all
-    -- outstanding requests will be handled.
-    --
-    -- You may instead prefer to do one or both of the following:
-    --
-    -- * Only wait a finite amount of time for outstanding requests to complete,
-    --   using 'setGracefulShutdownTimeout'.
-    -- * Only catch one signal, so the second hard-kills the Warp server, using
-    --   'System.Posix.Signals.CatchOnce'.
-    --
-    -- Default: does not install any code.
-    settingsInstallShutdownHandler :: !(IO () -> IO ()),
     -- | Default server name to be sent as the \"Server:\" header
     --   if an application does not set one.
     --   If an empty string is set, the \"Server:\" header is not sent.
@@ -174,14 +144,6 @@ data Settings = Settings
     settingsLogger :: !(Request -> H.Status -> Maybe Integer -> IO ()),
     -- | A HTTP/2 server push log function. Default: no action.
     settingsServerPushLogger :: !(Request -> ByteString -> Integer -> IO ()),
-    -- | Set the graceful shutdown timeout. A timeout of `Nothing' will
-    -- wait indefinitely, and a number, if provided, will be treated as seconds
-    -- to wait for requests to finish, before shutting down the server entirely.
-    --
-    -- Graceful shutdown mode is entered when the server socket is closed; see
-    -- 'setInstallShutdownHandler' for an example of how this could be done in
-    -- response to a UNIX signal.
-    settingsGracefulShutdownTimeout :: !(Maybe Int),
     -- | A timeout to limit the time (in milliseconds) waiting for
     -- FIN for HTTP/1.x. 0 means uses immediate close.
     -- Default: 0.
@@ -258,7 +220,6 @@ defaultSettings =
       settingsFork = defaultFork,
       settingsAccept = defaultAccept,
       settingsNoParsePath = False,
-      settingsInstallShutdownHandler = const $ return (),
       settingsServerName = C8.pack $ "Warp/" ++ showVersion Paths_warpless.version,
       settingsMaximumBodyFlush = Just 8192,
       settingsProxyProtocol = ProxyProtocolNone,
@@ -266,7 +227,6 @@ defaultSettings =
       settingsHTTP2Enabled = True,
       settingsLogger = \_ _ _ -> return (),
       settingsServerPushLogger = \_ _ _ -> return (),
-      settingsGracefulShutdownTimeout = Nothing,
       settingsGracefulCloseTimeout1 = 0,
       settingsGracefulCloseTimeout2 = 2000,
       settingsMaxTotalHeaderLength = 50 * 1024,
