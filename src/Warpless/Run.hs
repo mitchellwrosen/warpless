@@ -51,7 +51,7 @@ socketConnection set s = do
             then close s
             else gracefulClose s tm `UnliftIO.catchAny` \(UnliftIO.SomeException _) -> return (),
         connRecv = receive' s bufferPool,
-        connRecvBuf = receiveBuf s,
+        connRecvBuf = \_ _ -> pure True, -- obsoleted
         connWriteBuffer = writeBufferRef,
         connHTTP2 = isH2
       }

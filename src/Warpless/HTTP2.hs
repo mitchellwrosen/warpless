@@ -29,7 +29,7 @@ import Warpless.Types
 http2 :: S.Settings -> InternalInfo -> Connection -> Application -> SockAddr -> T.Handle -> ByteString -> IO ()
 http2 settings ii conn app origAddr th bs = do
   istatus <- newIORef False
-  rawRecvN <- makeReceiveN bs (connRecv conn) (connRecvBuf conn)
+  rawRecvN <- makeRecvN bs $ connRecv conn
   writeBuffer <- readIORef $ connWriteBuffer conn
   -- This thread becomes the sender in http2 library.
   -- In the case of event source, one request comes and one

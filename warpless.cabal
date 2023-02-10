@@ -45,7 +45,7 @@ Library
     iproute >= 1.3.1,
     ki ^>= 1.0.0.2,
     network ^>= 3.1.2,
-    recv,
+    recv ^>= 0.1.0,
     simple-sendfile >= 0.2.7 && < 0.3,
     stm >= 2.3,
     streaming-commons >= 0.1.10,
