@@ -37,8 +37,7 @@ socketConnection set s = do
   isH2 <- newIORef False -- HTTP/1.x
   return
     Connection
-      { connSendMany = Sock.sendMany s,
-        connSendAll = sendall,
+      { connSendAll = sendall,
         connSendFile = sendfile writeBufferRef,
         connClose = do
           h2 <- readIORef isH2
@@ -110,9 +109,7 @@ run set app =
               conn <- socketConnection set s
               _ :: Ki.Thread () <-
                 Ki.forkWith scope Ki.defaultThreadOptions {Ki.maskingState = MaskedInterruptible} do
-                  -- th <- TimeManager.registerKillThread (timeoutManager ii) (connClose conn)
                   let cleanup = do
-                        -- TimeManager.cancel th -- musn't throw
                         _ <- UnliftIO.tryAny (connClose conn)
                         writeBuffer <- readIORef (connWriteBuffer conn)
                         bufFree writeBuffer

@@ -113,9 +113,7 @@ type RecvBuf = Buffer -> BufSize -> IO Bool
 -- | Data type to manipulate IO actions for connections.
 --   This is used to abstract IO actions for plain HTTP and HTTP over TLS.
 data Connection = Connection
-  { -- | This is not used at this moment.
-    connSendMany :: !([ByteString] -> IO ()),
-    -- | The sending function.
+  { -- | The sending function.
     connSendAll :: !(ByteString -> IO ()),
     -- | The sending function for files in HTTP/1.1.
     connSendFile :: !SendFile,
