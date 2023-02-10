@@ -3,89 +3,24 @@ module Warpless.Run
   )
 where
 
-import Control.Exception (MaskingState (..), SomeException (..), allowInterrupt, throwIO)
+import Control.Exception (MaskingState (..), SomeException (..), allowInterrupt)
 import Control.Monad (forever)
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
-import Data.IORef (newIORef, readIORef)
+import Data.IORef (readIORef)
 import Data.Streaming.Network (bindPortTCP)
 import GHC.IO (unsafeUnmask)
-import GHC.IO.Exception (IOErrorType (..), IOException (..))
 import Ki qualified
-import Network.Socket (Socket, SocketOption (..), close, fdSocket, gracefulClose, setSocketOption)
-import Network.Socket.BufferPool
-import Network.Socket.ByteString qualified as Sock
+import Network.Socket (Socket, SocketOption (..), close, fdSocket, setSocketOption)
 import Network.Wai
-import System.IO.Error (ioeGetErrorType)
 import UnliftIO qualified
-import Warpless.Buffer
-import Warpless.Connection (Connection (..))
+import Warpless.Connection (Connection (..), socketConnection)
 import Warpless.Date qualified as DateCache
 import Warpless.FdCache qualified as FdCache
 import Warpless.FileInfoCache qualified as FileInfoCache
 import Warpless.HTTP1 (http1)
 import Warpless.HTTP2 (http2)
-import Warpless.SendFile
 import Warpless.Settings
 import Warpless.Types
-
--- | Creating 'Connection' for plain HTTP based on a given socket.
-socketConnection :: Settings -> Socket -> IO Connection
-socketConnection set s = do
-  bufferPool <- newBufferPool 2048 16384
-  writeBuffer <- createWriteBuffer 16384
-  writeBufferRef <- newIORef writeBuffer
-  isH2 <- newIORef False -- HTTP/1.x
-  return
-    Connection
-      { connSendAll = sendall,
-        connSendFile = sendfile writeBufferRef,
-        connClose = do
-          h2 <- readIORef isH2
-          let tm =
-                if h2
-                  then settingsGracefulCloseTimeout2 set
-                  else settingsGracefulCloseTimeout1 set
-          if tm == 0
-            then close s
-            else gracefulClose s tm `UnliftIO.catchAny` \(UnliftIO.SomeException _) -> return (),
-        connRecv = receive' s bufferPool,
-        connRecvBuf = \_ _ -> pure True, -- obsoleted
-        connWriteBuffer = writeBufferRef,
-        connHTTP2 = isH2
-      }
-  where
-    receive' sock pool = UnliftIO.handleIO handler $ receive sock pool
-      where
-        handler :: IOException -> IO ByteString
-        handler e
-          | ioeGetErrorType e == InvalidArgument = return ""
-          | otherwise = throwIO e
-
-    sendfile writeBufferRef fid offset len hook headers = do
-      writeBuffer <- readIORef writeBufferRef
-      sendFile
-        s
-        (bufBuffer writeBuffer)
-        (bufSize writeBuffer)
-        sendall
-        fid
-        offset
-        len
-        hook
-        headers
-
-    sendall = sendAll' s
-
-    sendAll' sock bs =
-      UnliftIO.handleJust
-        ( \e ->
-            if ioeGetErrorType e == ResourceVanished
-              then Just ConnectionClosedByPeer
-              else Nothing
-        )
-        UnliftIO.throwIO
-        $ Sock.sendAll sock bs
 
 -- | Run an 'Application' with the given 'Settings'.
 -- This opens a listen socket on the port defined in 'Settings' and

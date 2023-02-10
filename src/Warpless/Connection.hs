@@ -1,12 +1,22 @@
 module Warpless.Connection
   ( Connection (..),
     setConnHTTP2,
+    socketConnection,
   )
 where
 
+import Control.Exception (throwIO)
 import Data.ByteString (ByteString)
-import Data.IORef (IORef, writeIORef)
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import GHC.IO.Exception (IOErrorType (..), IOException (..))
+import Network.Socket (Socket, close, gracefulClose)
 import Network.Socket.BufferPool
+import Network.Socket.ByteString qualified as Sock
+import System.IO.Error (ioeGetErrorType)
+import UnliftIO qualified
+import Warpless.Buffer
+import Warpless.SendFile
+import Warpless.Settings
 import Warpless.Types
 
 -- | Data type to manipulate IO actions for connections.
@@ -35,3 +45,61 @@ data Connection = Connection
 
 setConnHTTP2 :: Connection -> Bool -> IO ()
 setConnHTTP2 conn b = writeIORef (connHTTP2 conn) b
+
+-- | Creating 'Connection' for plain HTTP based on a given socket.
+socketConnection :: Settings -> Socket -> IO Connection
+socketConnection set s = do
+  bufferPool <- newBufferPool 2048 16384
+  writeBuffer <- createWriteBuffer 16384
+  writeBufferRef <- newIORef writeBuffer
+  isH2 <- newIORef False -- HTTP/1.x
+  return
+    Connection
+      { connSendAll = sendall,
+        connSendFile = sendfile writeBufferRef,
+        connClose = do
+          h2 <- readIORef isH2
+          let tm =
+                if h2
+                  then settingsGracefulCloseTimeout2 set
+                  else settingsGracefulCloseTimeout1 set
+          if tm == 0
+            then close s
+            else gracefulClose s tm `UnliftIO.catchAny` \(UnliftIO.SomeException _) -> return (),
+        connRecv = receive' s bufferPool,
+        connRecvBuf = \_ _ -> pure True, -- obsoleted
+        connWriteBuffer = writeBufferRef,
+        connHTTP2 = isH2
+      }
+  where
+    receive' sock pool = UnliftIO.handleIO handler $ receive sock pool
+      where
+        handler :: IOException -> IO ByteString
+        handler e
+          | ioeGetErrorType e == InvalidArgument = return ""
+          | otherwise = throwIO e
+
+    sendfile writeBufferRef fid offset len hook headers = do
+      writeBuffer <- readIORef writeBufferRef
+      sendFile
+        s
+        (bufBuffer writeBuffer)
+        (bufSize writeBuffer)
+        sendall
+        fid
+        offset
+        len
+        hook
+        headers
+
+    sendall = sendAll' s
+
+    sendAll' sock bs =
+      UnliftIO.handleJust
+        ( \e ->
+            if ioeGetErrorType e == ResourceVanished
+              then Just ConnectionClosedByPeer
+              else Nothing
+        )
+        UnliftIO.throwIO
+        $ Sock.sendAll sock bs
