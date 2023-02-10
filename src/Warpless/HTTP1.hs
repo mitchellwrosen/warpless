@@ -14,7 +14,6 @@ import Data.IP (toHostAddress, toHostAddress6)
 import Network.Socket (SockAddr (SockAddrInet, SockAddrInet6))
 import Network.Wai
 import Network.Wai.Internal (ResponseReceived (ResponseReceived))
-import System.TimeManager qualified as T
 import UnliftIO qualified
 import Warpless.Header
 import Warpless.ReadInt
@@ -23,19 +22,17 @@ import Warpless.Response
 import Warpless.Settings
 import Warpless.Types
 
-http1 :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> T.Handle -> ByteString -> IO ()
-http1 settings ii conn app origAddr th bs0 = do
+http1 :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
+http1 settings ii conn app origAddr bs0 = do
   istatus <- newIORef True
-  src <- mkSource (wrappedRecv conn istatus (settingsSlowlorisSize settings))
+  src <- mkSource (wrappedRecv conn istatus)
   leftoverSource src bs0
   addr <- getProxyProtocolAddr src
-  http1server settings ii conn app addr th istatus src
+  http1server settings ii conn app addr istatus src
   where
-    wrappedRecv Connection {connRecv = recv} istatus slowlorisSize = do
+    wrappedRecv Connection {connRecv = recv} istatus = do
       bs <- recv
-      when (not (BS.null bs)) do
-        writeIORef istatus True
-        when (BS.length bs >= slowlorisSize) $ T.tickle th
+      when (not (BS.null bs)) (writeIORef istatus True)
       return bs
 
     getProxyProtocolAddr src =
@@ -94,11 +91,10 @@ http1server ::
   Connection ->
   Application ->
   SockAddr ->
-  T.Handle ->
   IORef Bool ->
   Source ->
   IO ()
-http1server settings ii conn app addr th istatus src =
+http1server settings ii conn app addr istatus src =
   loop True `UnliftIO.catchAny` handler
   where
     handler e
@@ -108,13 +104,13 @@ http1server settings ii conn app addr th istatus src =
       -- No valid request
       | Just (BadFirstLine _) <- fromException e = return ()
       | otherwise = do
-          _ <- sendErrorResponse settings ii conn th istatus defaultRequest {remoteHost = addr} e
+          _ <- sendErrorResponse settings ii conn istatus defaultRequest {remoteHost = addr} e
           throwIO e
 
     loop firstRequest = do
-      (req, mremainingRef, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn ii th addr src
+      (req, mremainingRef, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn ii addr src
       keepAlive <-
-        processRequest settings ii conn app th istatus src req mremainingRef idxhdr nextBodyFlush
+        processRequest settings ii conn app istatus src req mremainingRef idxhdr nextBodyFlush
           `UnliftIO.catchAny` \e -> do
             settingsOnException settings (Just req) e
             -- Don't throw the error again to prevent calling settingsOnException twice.
@@ -136,7 +132,6 @@ processRequest ::
   InternalInfo ->
   Connection ->
   Application ->
-  T.Handle ->
   IORef Bool ->
   Source ->
   Request ->
@@ -144,10 +139,7 @@ processRequest ::
   IndexedHeader ->
   IO ByteString ->
   IO Bool
-processRequest settings ii conn app th istatus src req mremainingRef idxhdr nextBodyFlush = do
-  -- Let the application run for as long as it wants
-  T.pause th
-
+processRequest settings ii conn app istatus src req mremainingRef idxhdr nextBodyFlush = do
   -- In the event that some scarce resource was acquired during
   -- creating the request, we need to make sure that we don't get
   -- an async exception before calling the ResponseSource.
@@ -155,12 +147,11 @@ processRequest settings ii conn app th istatus src req mremainingRef idxhdr next
   r <-
     UnliftIO.tryAny $
       app req \res -> do
-        T.resume th
         -- FIXME consider forcing evaluation of the res here to
         -- send more meaningful error messages to the user.
         -- However, it may affect performance.
         writeIORef istatus False
-        keepAlive <- sendResponse settings conn ii th req idxhdr (readSource src) res
+        keepAlive <- sendResponse settings conn ii req idxhdr (readSource src) res
         writeIORef keepAliveRef keepAlive
         return ResponseReceived
   case r of
@@ -168,7 +159,7 @@ processRequest settings ii conn app th istatus src req mremainingRef idxhdr next
     Left (e :: SomeException)
       | Just (ExceptionInsideResponseBody e') <- fromException e -> throwIO e'
       | otherwise -> do
-          keepAlive <- sendErrorResponse settings ii conn th istatus req e
+          keepAlive <- sendErrorResponse settings ii conn istatus req e
           settingsOnException settings (Just req) e
           writeIORef keepAliveRef keepAlive
 
@@ -193,11 +184,7 @@ processRequest settings ii conn app th istatus src req mremainingRef idxhdr next
         let tryKeepAlive = do
               -- flush the rest of the request body
               isComplete <- flushBody nextBodyFlush maxToRead
-              if isComplete
-                then do
-                  T.resume th
-                  return True
-                else return False
+              pure isComplete
         case mremainingRef of
           Just ref -> do
             remaining <- readIORef ref
@@ -207,15 +194,14 @@ processRequest settings ii conn app th istatus src req mremainingRef idxhdr next
           Nothing -> tryKeepAlive
       _ -> do
         flushEntireBody nextBodyFlush
-        T.resume th
-        return True
+        pure True
     else return False
 
-sendErrorResponse :: Settings -> InternalInfo -> Connection -> T.Handle -> IORef Bool -> Request -> SomeException -> IO Bool
-sendErrorResponse settings ii conn th istatus req e = do
+sendErrorResponse :: Settings -> InternalInfo -> Connection -> IORef Bool -> Request -> SomeException -> IO Bool
+sendErrorResponse settings ii conn istatus req e = do
   status <- readIORef istatus
   if shouldSendErrorResponse e && status
-    then sendResponse settings conn ii th req defaultIndexRequestHeader (return BS.empty) errorResponse
+    then sendResponse settings conn ii req defaultIndexRequestHeader (return BS.empty) errorResponse
     else return False
   where
     shouldSendErrorResponse se

@@ -20,20 +20,19 @@ import Network.Socket (SockAddr)
 import Network.Wai
 import Network.Wai.Internal (Request (..))
 import System.IO.Unsafe (unsafePerformIO)
-import System.TimeManager qualified as T
 import Warpless.HTTP2.Types
-import Warpless.Request (getFileInfoKey, pauseTimeoutKey)
+import Warpless.Request (getFileInfoKey)
 import Warpless.Settings qualified as S (Settings, settingsNoParsePath)
 import Warpless.Types
 
-type ToReq = (TokenHeaderList, ValueTable) -> Maybe Int -> IO ByteString -> T.Handle -> IO Request
+type ToReq = (TokenHeaderList, ValueTable) -> Maybe Int -> IO ByteString -> IO Request
 
 ----------------------------------------------------------------
 
 toRequest :: InternalInfo -> S.Settings -> SockAddr -> ToReq
-toRequest ii settings addr ht bodylen body th = do
+toRequest ii settings addr ht bodylen body = do
   ref <- newIORef Nothing
-  toRequest' ii settings addr ref ht bodylen body th
+  toRequest' ii settings addr ref ht bodylen body
 
 toRequest' ::
   InternalInfo ->
@@ -41,7 +40,7 @@ toRequest' ::
   SockAddr ->
   IORef (Maybe HTTP2Data) ->
   ToReq
-toRequest' ii settings addr ref (reqths, reqvt) bodylen body th = return req
+toRequest' ii settings addr ref (reqths, reqvt) bodylen body = return req
   where
     !req =
       Request
@@ -87,10 +86,7 @@ toRequest' ii settings addr ref (reqths, reqvt) bodylen body th = return req
         Vault.insert getHTTP2DataKey (readIORef ref) $
           Vault.insert setHTTP2DataKey (writeIORef ref) $
             Vault.insert modifyHTTP2DataKey (modifyIORef' ref) $
-              Vault.insert
-                pauseTimeoutKey
-                (T.pause th)
-                Vault.empty
+              Vault.empty
 
 getHTTP2DataKey :: Vault.Key (IO (Maybe HTTP2Data))
 getHTTP2DataKey = unsafePerformIO Vault.newKey

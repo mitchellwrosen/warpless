@@ -15,7 +15,7 @@ import Network.Socket (SockAddr)
 import Network.Socket.BufferPool
 import Network.Wai
 import Network.Wai.Internal (ResponseReceived (..))
-import System.TimeManager qualified as T
+import System.TimeManager qualified as TimeManager
 import UnliftIO qualified
 import Warpless.HTTP2.File
 import Warpless.HTTP2.PushPromise
@@ -26,31 +26,31 @@ import Warpless.Types
 
 ----------------------------------------------------------------
 
-http2 :: S.Settings -> InternalInfo -> Connection -> Application -> SockAddr -> T.Handle -> ByteString -> IO ()
-http2 settings ii conn app origAddr th bs = do
+http2 :: S.Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
+http2 settings ii conn app origAddr bs = do
   istatus <- newIORef False
   rawRecvN <- makeRecvN bs $ connRecv conn
   writeBuffer <- readIORef $ connWriteBuffer conn
-  -- This thread becomes the sender in http2 library.
-  -- In the case of event source, one request comes and one
-  -- worker gets busy. But it is likely that the receiver does
-  -- not receive any data at all while the sender is sending
-  -- output data from the worker. It's not good enough to tickle
-  -- the time handler in the receiver only. So, we should tickle
-  -- the time handler in both the receiver and the sender.
-  let recvN = wrappedRecvN th istatus (S.settingsSlowlorisSize settings) rawRecvN
-      sendBS x = connSendAll conn x >> T.tickle th
-      conf =
-        H2.Config
-          { confWriteBuffer = bufBuffer writeBuffer,
-            confBufferSize = bufSize writeBuffer,
-            confSendAll = sendBS,
-            confReadN = recvN,
-            confPositionReadMaker = pReadMaker ii,
-            confTimeoutManager = timeoutManager ii
-          }
-  setConnHTTP2 conn True
-  H2.run conf $ http2server settings ii origAddr app
+  UnliftIO.bracket (TimeManager.initialize 30_000_000) TimeManager.stopManager \tm -> do
+    -- This thread becomes the sender in http2 library.
+    -- In the case of event source, one request comes and one
+    -- worker gets busy. But it is likely that the receiver does
+    -- not receive any data at all while the sender is sending
+    -- output data from the worker. It's not good enough to tickle
+    -- the time handler in the receiver only. So, we should tickle
+    -- the time handler in both the receiver and the sender.
+    let recvN = wrappedRecvN istatus rawRecvN
+        conf =
+          H2.Config
+            { confWriteBuffer = bufBuffer writeBuffer,
+              confBufferSize = bufSize writeBuffer,
+              confSendAll = connSendAll conn,
+              confReadN = recvN,
+              confPositionReadMaker = pReadMaker ii,
+              confTimeoutManager = tm
+            }
+    setConnHTTP2 conn True
+    H2.run conf $ http2server settings ii origAddr app
 
 -- | Converting WAI application to the server type of http2 library.
 --
@@ -61,8 +61,8 @@ http2server ::
   SockAddr ->
   Application ->
   H2.Server
-http2server settings ii addr app h2req0 aux0 response = do
-  req <- toWAIRequest h2req0 aux0
+http2server settings ii addr app h2req0 _aux0 response = do
+  req <- toWAIRequest h2req0
   ref <- I.newIORef Nothing
   eResponseReceived <- UnliftIO.tryAny $
     app req $ \rsp -> do
@@ -87,12 +87,11 @@ http2server settings ii addr app h2req0 aux0 response = do
       logResponse req st (fromIntegral @Int @Integer <$> msiz)
   return ()
   where
-    toWAIRequest h2req aux = toRequest ii settings addr hdr bdylen bdy th
+    toWAIRequest h2req = toRequest ii settings addr hdr bdylen bdy
       where
         !hdr = H2.requestHeaders h2req
         !bdy = H2.getRequestBodyChunk h2req
         !bdylen = H2.requestBodySize h2req
-        !th = H2.auxTimeHandle aux
 
     logResponse = S.settingsLogger settings
 
@@ -104,17 +103,10 @@ http2server settings ii addr app h2req0 aux0 response = do
           Nothing -> 0
           Just s -> s
 
-wrappedRecvN :: T.Handle -> IORef Bool -> Int -> (BufSize -> IO ByteString) -> (BufSize -> IO ByteString)
-wrappedRecvN th istatus slowlorisSize readN bufsize = do
+wrappedRecvN :: IORef Bool -> (BufSize -> IO ByteString) -> (BufSize -> IO ByteString)
+wrappedRecvN istatus readN bufsize = do
   bs <- UnliftIO.handleAny handler $ readN bufsize
-  when (not (BS.null bs)) do
-    writeIORef istatus True
-    -- TODO: think about the slowloris protection in HTTP2: current code
-    -- might open a slow-loris attack vector. Rather than timing we should
-    -- consider limiting the per-client connections assuming that in HTTP2
-    -- we should allow only few connections per host (real-world
-    -- deployments with large NATs may be trickier).
-    when (BS.length bs >= slowlorisSize || bufsize <= slowlorisSize) $ T.tickle th
+  when (not (BS.null bs)) (writeIORef istatus True)
   return bs
   where
     handler :: UnliftIO.SomeException -> IO ByteString

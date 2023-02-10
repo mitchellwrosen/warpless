@@ -29,7 +29,6 @@ import Network.HTTP.Types.Header qualified as H
 import Network.Wai
 import Network.Wai.Internal
 import Paths_warpless qualified
-import System.TimeManager qualified as T
 import UnliftIO qualified
 import Warpless.Buffer (toBuilderBuffer)
 import Warpless.Date qualified as D
@@ -94,7 +93,6 @@ sendResponse ::
   Settings ->
   Connection ->
   InternalInfo ->
-  T.Handle ->
   -- | HTTP request.
   Request ->
   -- | Indexed header of HTTP request.
@@ -105,7 +103,7 @@ sendResponse ::
   Response ->
   -- | Returing True if the connection is persistent.
   IO Bool
-sendResponse settings conn ii th req reqidxhdr src response = do
+sendResponse settings conn ii req reqidxhdr src response = do
   hs <- addAltSvc settings <$> addServerAndDate hs0
   if hasBody s
     then do
@@ -115,17 +113,15 @@ sendResponse settings conn ii th req reqidxhdr src response = do
       -- and status, the response to HEAD is processed here.
       --
       -- See definition of rsp below for proper body stripping.
-      (ms, mlen) <- sendRsp conn ii th ver s hs rspidxhdr maxRspBufSize rsp
+      (ms, mlen) <- sendRsp conn ii ver s hs rspidxhdr maxRspBufSize rsp
       case ms of
-        Nothing -> return ()
+        Nothing -> pure ()
         Just realStatus -> logger req realStatus mlen
-      T.tickle th
-      return ret
+      pure ret
     else do
-      _ <- sendRsp conn ii th ver s hs rspidxhdr maxRspBufSize RspNoBody
+      _ <- sendRsp conn ii ver s hs rspidxhdr maxRspBufSize RspNoBody
       logger req s Nothing
-      T.tickle th
-      return isPersist
+      pure isPersist
   where
     defServer = settingsServerName settings
     logger = settingsLogger settings
@@ -141,7 +137,7 @@ sendResponse settings conn ii th req reqidxhdr src response = do
     (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr (isPersist, isChunked)
     isHead = requestMethod req == H.methodHead
     rsp = case response of
-      ResponseFile _ _ path mPart -> RspFile path mPart reqidxhdr isHead (T.tickle th)
+      ResponseFile _ _ path mPart -> RspFile path mPart reqidxhdr isHead
       ResponseBuilder _ _ b
         | isHead -> RspNoBody
         | otherwise -> RspBuilder b needsChunked
@@ -185,7 +181,7 @@ sanitizeHeaderValue v = case C8.lines $ S.filter (/= _cr) v of
 
 data Rsp
   = RspNoBody
-  | RspFile !FilePath !(Maybe FilePart) !IndexedHeader !Bool !(IO ())
+  | RspFile !FilePath !(Maybe FilePart) !IndexedHeader !Bool
   | RspBuilder !Builder !Bool
   | RspStream !StreamingBody !Bool
   | RspRaw !(IO ByteString -> (ByteString -> IO ()) -> IO ()) !(IO ByteString)
@@ -195,7 +191,6 @@ data Rsp
 sendRsp ::
   Connection ->
   InternalInfo ->
-  T.Handle ->
   H.HttpVersion ->
   H.Status ->
   H.ResponseHeaders ->
@@ -205,7 +200,7 @@ sendRsp ::
   IO (Maybe H.Status, Maybe Integer)
 ----------------------------------------------------------------
 
-sendRsp conn _ _ ver s hs _ _ RspNoBody = do
+sendRsp conn _ ver s hs _ _ RspNoBody = do
   -- Not adding Content-Length.
   -- User agents treats it as Content-Length: 0.
   composeHeader ver s hs >>= connSendAll conn
@@ -213,7 +208,7 @@ sendRsp conn _ _ ver s hs _ _ RspNoBody = do
 
 ----------------------------------------------------------------
 
-sendRsp conn _ th ver s hs _ maxRspBufSize (RspBuilder body needsChunked) = do
+sendRsp conn _ ver s hs _ maxRspBufSize (RspBuilder body needsChunked) = do
   header <- composeHeaderBuilder ver s hs needsChunked
   let hdrBdy
         | needsChunked =
@@ -221,12 +216,12 @@ sendRsp conn _ th ver s hs _ maxRspBufSize (RspBuilder body needsChunked) = do
               <> chunkedTransferTerminator
         | otherwise = header <> body
       writeBufferRef = connWriteBuffer conn
-  toBufIOWith maxRspBufSize writeBufferRef (\bs -> connSendAll conn bs >> T.tickle th) hdrBdy
+  toBufIOWith maxRspBufSize writeBufferRef (connSendAll conn) hdrBdy
   return (Just s, Nothing) -- fixme: can we tell the actual sent bytes?
 
 ----------------------------------------------------------------
 
-sendRsp conn _ th ver s hs _ _ (RspStream streamingBody needsChunked) = do
+sendRsp conn _ ver s hs _ _ (RspStream streamingBody needsChunked) = do
   header <- composeHeaderBuilder ver s hs needsChunked
   (recv, finish) <-
     newByteStringBuilderRecv $
@@ -237,7 +232,7 @@ sendRsp conn _ th ver s hs _ _ (RspStream streamingBody needsChunked) = do
         let loop = do
               bs <- popper
               when (not (S.null bs)) do
-                sendFragment conn th bs
+                connSendAll conn bs
                 loop
         loop
       sendChunk
@@ -247,29 +242,21 @@ sendRsp conn _ th ver s hs _ _ (RspStream streamingBody needsChunked) = do
   streamingBody sendChunk (sendChunk flush)
   when needsChunked $ send chunkedTransferTerminator
   mbs <- finish
-  maybe (return ()) (sendFragment conn th) mbs
+  maybe (return ()) (connSendAll conn) mbs
   return (Just s, Nothing) -- fixme: can we tell the actual sent bytes?
 
 ----------------------------------------------------------------
 
-sendRsp conn _ th _ _ _ _ _ (RspRaw withApp src) = do
-  withApp recv send
+sendRsp conn _ _ _ _ _ _ (RspRaw withApp src) = do
+  withApp src (connSendAll conn)
   return (Nothing, Nothing)
-  where
-    recv = do
-      bs <- src
-      when (not (S.null bs)) (T.tickle th)
-      return bs
-    send bs = do
-      connSendAll conn bs
-      T.tickle th
 
 ----------------------------------------------------------------
 
 -- Sophisticated WAI applications.
 -- We respect s0. s0 MUST be a proper value.
-sendRsp conn ii th ver s0 hs0 rspidxhdr maxRspBufSize (RspFile path (Just part) _ isHead hook) =
-  sendRspFile2XX conn ii th ver s0 hs rspidxhdr maxRspBufSize path beg len isHead hook
+sendRsp conn ii ver s0 hs0 rspidxhdr maxRspBufSize (RspFile path (Just part) _ isHead) =
+  sendRspFile2XX conn ii ver s0 hs rspidxhdr maxRspBufSize path beg len isHead
   where
     beg = filePartOffset part
     len = filePartByteCount part
@@ -279,21 +266,20 @@ sendRsp conn ii th ver s0 hs0 rspidxhdr maxRspBufSize (RspFile path (Just part) 
 
 -- Simple WAI applications.
 -- Status is ignored
-sendRsp conn ii th ver _ hs0 rspidxhdr maxRspBufSize (RspFile path Nothing reqidxhdr isHead hook) = do
+sendRsp conn ii ver _ hs0 rspidxhdr maxRspBufSize (RspFile path Nothing reqidxhdr isHead) = do
   efinfo <- UnliftIO.tryIO $ getFileInfo ii path
   case efinfo of
     Left (_ex :: UnliftIO.IOException) ->
-      sendRspFile404 conn ii th ver hs0 rspidxhdr maxRspBufSize
+      sendRspFile404 conn ii ver hs0 rspidxhdr maxRspBufSize
     Right finfo -> case conditionalRequest finfo hs0 rspidxhdr reqidxhdr of
-      WithoutBody s -> sendRsp conn ii th ver s hs0 rspidxhdr maxRspBufSize RspNoBody
-      WithBody s hs beg len -> sendRspFile2XX conn ii th ver s hs rspidxhdr maxRspBufSize path beg len isHead hook
+      WithoutBody s -> sendRsp conn ii ver s hs0 rspidxhdr maxRspBufSize RspNoBody
+      WithBody s hs beg len -> sendRspFile2XX conn ii ver s hs rspidxhdr maxRspBufSize path beg len isHead
 
 ----------------------------------------------------------------
 
 sendRspFile2XX ::
   Connection ->
   InternalInfo ->
-  T.Handle ->
   H.HttpVersion ->
   H.Status ->
   H.ResponseHeaders ->
@@ -303,47 +289,29 @@ sendRspFile2XX ::
   Integer ->
   Integer ->
   Bool ->
-  IO () ->
   IO (Maybe H.Status, Maybe Integer)
-sendRspFile2XX conn ii th ver s hs rspidxhdr maxRspBufSize path beg len isHead hook
-  | isHead = sendRsp conn ii th ver s hs rspidxhdr maxRspBufSize RspNoBody
+sendRspFile2XX conn ii ver s hs rspidxhdr maxRspBufSize path beg len isHead
+  | isHead = sendRsp conn ii ver s hs rspidxhdr maxRspBufSize RspNoBody
   | otherwise = do
       lheader <- composeHeader ver s hs
       (mfd, fresher) <- getFd ii path
       let fid = FileId path mfd
-          hook' = hook >> fresher
-      connSendFile conn fid beg len hook' [lheader]
+      connSendFile conn fid beg len fresher [lheader]
       return (Just s, Just len)
 
 sendRspFile404 ::
   Connection ->
   InternalInfo ->
-  T.Handle ->
   H.HttpVersion ->
   H.ResponseHeaders ->
   IndexedHeader ->
   Int ->
   IO (Maybe H.Status, Maybe Integer)
-sendRspFile404 conn ii th ver hs0 rspidxhdr maxRspBufSize = sendRsp conn ii th ver s hs rspidxhdr maxRspBufSize (RspBuilder body True)
+sendRspFile404 conn ii ver hs0 rspidxhdr maxRspBufSize = sendRsp conn ii ver s hs rspidxhdr maxRspBufSize (RspBuilder body True)
   where
     s = H.notFound404
     hs = replaceHeader H.hContentType "text/plain; charset=utf-8" hs0
     body = byteString "File not found"
-
-----------------------------------------------------------------
-----------------------------------------------------------------
-
--- | Use 'connSendAll' to send this data while respecting timeout rules.
-sendFragment :: Connection -> T.Handle -> ByteString -> IO ()
-sendFragment Connection {connSendAll = send} th bs = do
-  T.resume th
-  send bs
-  T.pause th
-
--- We pause timeouts before passing control back to user code. This ensures
--- that a timeout will only ever be executed when Warp is in control. We
--- also make sure to resume the timeout after the completion of user code
--- so that we can kill idle connections.
 
 ----------------------------------------------------------------
 

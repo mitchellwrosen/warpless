@@ -49,14 +49,6 @@ data Settings = Settings
     --
     -- Since 2.0.3
     settingsOnExceptionResponse :: !(SomeException -> Response),
-    -- | "Slow-loris" timeout lower-bound value in seconds.  Connections where
-    -- network progress is made less frequently than this may be closed.  In
-    -- practice many connections may be allowed to go without progress for up to
-    -- twice this amount of time.  Note that this timeout is not applied to
-    -- application code, only network progress.
-    --
-    -- Default value: 30
-    settingsTimeout :: !Int,
     -- | Cache duration time of file descriptors in seconds. 0 means that the cache mechanism is not used.
     --
     -- The FD cache is an optimization that is useful for servers dealing with
@@ -118,8 +110,6 @@ data Settings = Settings
     settingsMaximumBodyFlush :: !(Maybe Int),
     -- | Specify usage of the PROXY protocol.
     settingsProxyProtocol :: !ProxyProtocol,
-    -- | Size in bytes read to prevent Slowloris attacks. Default value: 2048
-    settingsSlowlorisSize :: !Int,
     -- | Whether to enable HTTP2 ALPN/upgrades. Default: True
     settingsHTTP2Enabled :: !Bool,
     -- | A log function. Default: no action.
@@ -192,7 +182,6 @@ defaultSettings =
       settingsHost = "*4",
       settingsOnException = defaultOnException,
       settingsOnExceptionResponse = defaultOnExceptionResponse,
-      settingsTimeout = 30,
       settingsFdCacheDuration = 0,
       settingsFileInfoCacheDuration = 0,
       settingsBeforeMainLoop = return (),
@@ -201,7 +190,6 @@ defaultSettings =
       settingsServerName = C8.pack $ "Warpless/" ++ showVersion Paths_warpless.version,
       settingsMaximumBodyFlush = Just 8192,
       settingsProxyProtocol = ProxyProtocolNone,
-      settingsSlowlorisSize = 2048,
       settingsHTTP2Enabled = True,
       settingsLogger = \_ _ _ -> return (),
       settingsServerPushLogger = \_ _ _ -> return (),

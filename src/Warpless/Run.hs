@@ -17,7 +17,6 @@ import Network.Socket.BufferPool
 import Network.Socket.ByteString qualified as Sock
 import Network.Wai
 import System.IO.Error (ioeGetErrorType)
-import System.TimeManager qualified as TimeManager
 import UnliftIO qualified
 import Warpless.Buffer
 import Warpless.Date qualified as DateCache
@@ -97,39 +96,37 @@ run set app =
     setSocketCloseOnExec socket
     settingsBeforeMainLoop set
     dateCache <- DateCache.initialize
-    UnliftIO.bracket (TimeManager.initialize timeoutInSeconds) TimeManager.stopManager \tm ->
-      FdCache.withFdCache fdCacheDurationInSeconds \fdc ->
-        FileInfoCache.withFileInfoCache fdFileInfoDurationInSeconds \fic -> do
-          let ii = InternalInfo tm dateCache fdc fic
-          UnliftIO.mask_ $
-            Ki.scoped \scope -> do
-              forever do
-                allowInterrupt
-                (s, addr) <- settingsAccept set socket
-                setSocketCloseOnExec s
-                -- NoDelay causes an error for AF_UNIX.
-                setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
-                conn <- socketConnection set s
-                _ :: Ki.Thread () <-
-                  Ki.forkWith scope Ki.defaultThreadOptions {Ki.maskingState = MaskedInterruptible} do
-                    th <- TimeManager.registerKillThread (timeoutManager ii) (connClose conn)
-                    let cleanup = do
-                          TimeManager.cancel th -- musn't throw
-                          _ <- UnliftIO.tryAny (connClose conn)
-                          writeBuffer <- readIORef (connWriteBuffer conn)
-                          bufFree writeBuffer
-                    (`UnliftIO.finally` cleanup) do
-                      unsafeUnmask do
-                        -- fixme: Upgrading to HTTP/2 should be supported.
-                        bs <- connRecv conn
-                        if settingsHTTP2Enabled set && ByteString.length bs >= 4 && "PRI " `ByteString.isPrefixOf` bs
-                          then http2 set ii conn app addr th bs
-                          else http1 set ii conn app addr th bs
-                pure ()
+    FdCache.withFdCache fdCacheDurationInSeconds \fdc ->
+      FileInfoCache.withFileInfoCache fdFileInfoDurationInSeconds \fic -> do
+        let ii = InternalInfo dateCache fdc fic
+        UnliftIO.mask_ $
+          Ki.scoped \scope -> do
+            forever do
+              allowInterrupt
+              (s, addr) <- settingsAccept set socket
+              setSocketCloseOnExec s
+              -- NoDelay causes an error for AF_UNIX.
+              setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
+              conn <- socketConnection set s
+              _ :: Ki.Thread () <-
+                Ki.forkWith scope Ki.defaultThreadOptions {Ki.maskingState = MaskedInterruptible} do
+                  -- th <- TimeManager.registerKillThread (timeoutManager ii) (connClose conn)
+                  let cleanup = do
+                        -- TimeManager.cancel th -- musn't throw
+                        _ <- UnliftIO.tryAny (connClose conn)
+                        writeBuffer <- readIORef (connWriteBuffer conn)
+                        bufFree writeBuffer
+                  (`UnliftIO.finally` cleanup) do
+                    unsafeUnmask do
+                      -- fixme: Upgrading to HTTP/2 should be supported.
+                      bs <- connRecv conn
+                      if settingsHTTP2Enabled set && ByteString.length bs >= 4 && "PRI " `ByteString.isPrefixOf` bs
+                        then http2 set ii conn app addr bs
+                        else http1 set ii conn app addr bs
+              pure ()
   where
     !fdCacheDurationInSeconds = settingsFdCacheDuration set * 1_000_000
     !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration set * 1_000_000
-    timeoutInSeconds = settingsTimeout set * 1_000_000
 
 -- | Set flag FileCloseOnExec flag on a socket (on Unix)
 --

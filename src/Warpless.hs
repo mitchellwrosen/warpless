@@ -54,7 +54,6 @@ module Warpless
     InvalidRequest (..),
 
     -- * Utilities
-    pauseTimeout,
     FileInfo (..),
     getFileInfo,
 
@@ -95,15 +94,6 @@ import Warpless.Response (warpVersion)
 import Warpless.Run
 import Warpless.Settings
 import Warpless.Types hiding (getFileInfo)
-
--- | Explicitly pause the slowloris timeout.
---
--- This is useful for cases where you partially consume a request body. For
--- more information, see <https://github.com/yesodweb/wai/issues/351>
---
--- Since 3.0.10
-pauseTimeout :: Request -> IO ()
-pauseTimeout = fromMaybe (return ()) . Vault.lookup pauseTimeoutKey . vault
 
 -- | Getting file information of the target file.
 --

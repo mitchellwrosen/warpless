@@ -22,7 +22,6 @@ import Data.ByteString qualified as S
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Network.Socket.BufferPool
 import System.Posix.Types (Fd)
-import System.TimeManager qualified as T
 import UnliftIO qualified
 import Warpless.Date qualified as D
 import Warpless.FdCache qualified as F
@@ -143,8 +142,7 @@ setConnHTTP2 conn b = writeIORef (connHTTP2 conn) b
 ----------------------------------------------------------------
 
 data InternalInfo = InternalInfo
-  { timeoutManager :: !T.Manager,
-    getDate :: !(IO D.GMTDate),
+  { getDate :: !(IO D.GMTDate),
     getFd :: !(FilePath -> IO (Maybe F.Fd, F.Refresh)),
     getFileInfo :: !(FilePath -> IO I.FileInfo)
   }

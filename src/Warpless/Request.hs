@@ -3,7 +3,6 @@
 module Warpless.Request
   ( recvRequest,
     headerLines,
-    pauseTimeoutKey,
     getFileInfoKey,
     NoKeepAliveRequest (..),
   )
@@ -23,7 +22,6 @@ import Network.Socket (SockAddr)
 import Network.Wai
 import Network.Wai.Internal
 import System.IO.Unsafe (unsafePerformIO)
-import System.TimeManager qualified as Timeout
 import UnliftIO (Exception, throwIO)
 import Warpless.Conduit
 import Warpless.FileInfoCache
@@ -44,7 +42,6 @@ recvRequest ::
   Settings ->
   Connection ->
   InternalInfo ->
-  Timeout.Handle ->
   -- | Peer's address.
   SockAddr ->
   -- | Where HTTP request comes from.
@@ -60,7 +57,7 @@ recvRequest ::
       IndexedHeader,
       IO ByteString
     )
-recvRequest firstRequest settings conn ii th addr src = do
+recvRequest firstRequest settings conn ii addr src = do
   hdrlines <- headerLines (settingsMaxTotalHeaderLength settings) firstRequest src
   (method, unparsedPath, path, query, httpversion, hdr) <- parseHeaderLines hdrlines
   let idxhdr = indexRequestHeader hdr
@@ -70,16 +67,15 @@ recvRequest firstRequest settings conn ii th addr src = do
       handle100Continue = handleExpect conn httpversion expect
       rawPath = if settingsNoParsePath settings then unparsedPath else path
       vaultValue =
-        Vault.insert pauseTimeoutKey (Timeout.pause th) $
-          Vault.insert
-            getFileInfoKey
-            (getFileInfo ii)
-            Vault.empty
+        Vault.insert
+          getFileInfoKey
+          (getFileInfo ii)
+          Vault.empty
   (rbody, remainingRef, bodyLength) <- bodyAndSource src cl te
   -- body producing function which will produce '100-continue', if needed
-  rbody' <- timeoutBody remainingRef th rbody handle100Continue
+  rbody' <- timeoutBody rbody handle100Continue
   -- body producing function which will never produce 100-continue
-  rbodyFlush <- timeoutBody remainingRef th rbody (return ())
+  rbodyFlush <- timeoutBody rbody (return ())
   let req =
         Request
           { requestMethod = method,
@@ -171,48 +167,22 @@ isChunked _ = False
 ----------------------------------------------------------------
 
 timeoutBody ::
-  -- | remaining
-  Maybe (I.IORef Int) ->
-  Timeout.Handle ->
   IO ByteString ->
   IO () ->
   IO (IO ByteString)
-timeoutBody remainingRef timeoutHandle rbody handle100Continue = do
+timeoutBody rbody handle100Continue = do
   isFirstRef <- I.newIORef True
 
-  let checkEmpty =
-        case remainingRef of
-          Nothing -> return . S.null
-          Just ref -> \bs ->
-            if S.null bs
-              then return True
-              else do
-                x <- I.readIORef ref
-                return $! x <= 0
-
-  return $ do
+  pure do
     isFirst <- I.readIORef isFirstRef
 
     when isFirst $ do
       -- Only check if we need to produce the 100 Continue status
       -- when asking for the first chunk of the body
       handle100Continue
-      -- Timeout handling was paused after receiving the full request
-      -- headers. Now we need to resume it to avoid a slowloris
-      -- attack during request body sending.
-      Timeout.resume timeoutHandle
       I.writeIORef isFirstRef False
 
-    bs <- rbody
-
-    -- As soon as we finish receiving the request body, whether
-    -- because the application is not interested in more bytes, or
-    -- because there is no more data available, pause the timeout
-    -- handler again.
-    isEmpty <- checkEmpty bs
-    when isEmpty (Timeout.pause timeoutHandle)
-
-    return bs
+    rbody
 
 ----------------------------------------------------------------
 
@@ -323,10 +293,6 @@ checkCR :: ByteString -> Int -> Int
 checkCR bs pos = if pos > 0 && 13 == S.index bs p then p else pos -- 13 is CR (\r)
   where
     !p = pos - 1
-
-pauseTimeoutKey :: Vault.Key (IO ())
-pauseTimeoutKey = unsafePerformIO Vault.newKey
-{-# NOINLINE pauseTimeoutKey #-}
 
 getFileInfoKey :: Vault.Key (FilePath -> IO FileInfo)
 getFileInfoKey = unsafePerformIO Vault.newKey
