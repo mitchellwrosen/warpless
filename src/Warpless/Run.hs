@@ -19,6 +19,7 @@ import Network.Wai
 import System.IO.Error (ioeGetErrorType)
 import UnliftIO qualified
 import Warpless.Buffer
+import Warpless.Connection (Connection (..))
 import Warpless.Date qualified as DateCache
 import Warpless.FdCache qualified as FdCache
 import Warpless.FileInfoCache qualified as FileInfoCache

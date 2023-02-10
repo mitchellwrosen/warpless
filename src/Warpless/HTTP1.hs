@@ -15,6 +15,7 @@ import Network.Socket (SockAddr (SockAddrInet, SockAddrInet6))
 import Network.Wai
 import Network.Wai.Internal (ResponseReceived (ResponseReceived))
 import UnliftIO qualified
+import Warpless.Connection (Connection (..))
 import Warpless.Header
 import Warpless.ReadInt
 import Warpless.Request

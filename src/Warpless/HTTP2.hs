@@ -17,6 +17,7 @@ import Network.Wai
 import Network.Wai.Internal (ResponseReceived (..))
 import System.TimeManager qualified as TimeManager
 import UnliftIO qualified
+import Warpless.Connection (Connection (..), setConnHTTP2)
 import Warpless.HTTP2.File
 import Warpless.HTTP2.PushPromise
 import Warpless.HTTP2.Request

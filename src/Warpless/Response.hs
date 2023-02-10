@@ -31,6 +31,7 @@ import Network.Wai.Internal
 import Paths_warpless qualified
 import UnliftIO qualified
 import Warpless.Buffer (toBuilderBuffer)
+import Warpless.Connection (Connection (..))
 import Warpless.Date qualified as D
 import Warpless.File
 import Warpless.Header

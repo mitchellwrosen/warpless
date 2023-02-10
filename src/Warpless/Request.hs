@@ -24,6 +24,7 @@ import Network.Wai.Internal
 import System.IO.Unsafe (unsafePerformIO)
 import UnliftIO (Exception, throwIO)
 import Warpless.Conduit
+import Warpless.Connection (Connection (..))
 import Warpless.FileInfoCache
 import Warpless.Header
 import Warpless.ReadInt
