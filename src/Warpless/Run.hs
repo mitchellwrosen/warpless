@@ -3,17 +3,16 @@ module Warpless.Run
   )
 where
 
-import Control.Exception (MaskingState (..), SomeException (..), allowInterrupt)
+import Control.Exception (MaskingState (..), allowInterrupt)
 import Control.Monad (forever)
 import Data.ByteString qualified as ByteString
-import Data.IORef (readIORef)
 import Data.Streaming.Network (bindPortTCP)
 import GHC.IO (unsafeUnmask)
 import Ki qualified
-import Network.Socket (Socket, SocketOption (..), close, fdSocket, setSocketOption)
+import Network.Socket qualified as Network
 import Network.Wai
 import UnliftIO qualified
-import Warpless.Connection (Connection (..), socketConnection)
+import Warpless.Connection (Connection (..), cleanupConnection, socketConnection)
 import Warpless.Date qualified as DateCache
 import Warpless.FdCache qualified as FdCache
 import Warpless.FileInfoCache qualified as FileInfoCache
@@ -27,29 +26,25 @@ import Warpless.Types
 -- calls 'runSettingsSocket'.
 run :: Settings -> Application -> IO ()
 run settings app =
-  UnliftIO.bracket (bindPortTCP (settingsPort settings) (settingsHost settings)) close \socket -> do
-    setSocketCloseOnExec socket
+  UnliftIO.bracket (bindPortTCP (settingsPort settings) (settingsHost settings)) Network.close \serverSocket -> do
+    setSocketCloseOnExec serverSocket
     settingsBeforeMainLoop settings
     dateCache <- DateCache.initialize
     FdCache.withFdCache fdCacheDurationInSeconds \fdc ->
       FileInfoCache.withFileInfoCache fdFileInfoDurationInSeconds \fic -> do
         let ii = InternalInfo dateCache fdc fic
-        UnliftIO.mask_ $
+        UnliftIO.mask_ do
           Ki.scoped \scope -> do
             forever do
               allowInterrupt
-              (s, addr) <- settingsAccept settings socket
-              setSocketCloseOnExec s
-              -- NoDelay causes an error for AF_UNIX.
-              setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
-              conn <- socketConnection settings s
+              (clientSocket, addr) <- Network.accept serverSocket
               _ :: Ki.Thread () <-
                 Ki.forkWith scope Ki.defaultThreadOptions {Ki.maskingState = MaskedInterruptible} do
-                  let cleanup = do
-                        _ <- UnliftIO.tryAny (connClose conn)
-                        writeBuffer <- readIORef (connWriteBuffer conn)
-                        bufFree writeBuffer
-                  (`UnliftIO.finally` cleanup) do
+                  setSocketCloseOnExec clientSocket
+                  -- NoDelay causes an error for AF_UNIX.
+                  Network.setSocketOption clientSocket Network.NoDelay 1 `UnliftIO.catchAny` \_ -> pure ()
+                  conn <- socketConnection clientSocket
+                  (`UnliftIO.finally` cleanupConnection conn) do
                     unsafeUnmask do
                       -- fixme: Upgrading to HTTP/2 should be supported.
                       bs <- connRecv conn
@@ -66,7 +61,7 @@ run settings app =
 -- Copied from: https://github.com/mzero/plush/blob/master/src/Plush/Server/Warp.hs
 --
 -- @since 3.2.17
-setSocketCloseOnExec :: Socket -> IO ()
+setSocketCloseOnExec :: Network.Socket -> IO ()
 setSocketCloseOnExec socket = do
-  fd <- fdSocket socket
+  fd <- Network.fdSocket socket
   FdCache.setFileCloseOnExec $ fromIntegral fd

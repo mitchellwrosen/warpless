@@ -20,7 +20,6 @@ import Data.Text.IO qualified as TIO
 import Data.Version (showVersion)
 import GHC.IO.Exception (AsyncException (ThreadKilled), IOErrorType (..))
 import Network.HTTP.Types qualified as H
-import Network.Socket (SockAddr, Socket, accept)
 import Network.Wai
 import Paths_warpless qualified
 import System.IO (stderr)
@@ -79,13 +78,6 @@ data Settings = Settings
     --
     -- Default: do nothing.
     settingsBeforeMainLoop :: !(IO ()),
-    -- | Code to accept a new connection.
-    --
-    -- Useful if you need to provide connected sockets from something other
-    -- than a standard accept call.
-    --
-    -- Default: 'defaultAccept'
-    settingsAccept :: !(Socket -> IO (Socket, SockAddr)),
     -- | Perform no parsing on the rawPathInfo.
     --
     -- This is useful for writing HTTP proxies.
@@ -116,14 +108,6 @@ data Settings = Settings
     settingsLogger :: !(Request -> H.Status -> Maybe Integer -> IO ()),
     -- | A HTTP/2 server push log function. Default: no action.
     settingsServerPushLogger :: !(Request -> ByteString -> Integer -> IO ()),
-    -- | A timeout to limit the time (in milliseconds) waiting for
-    -- FIN for HTTP/1.x. 0 means uses immediate close.
-    -- Default: 0.
-    settingsGracefulCloseTimeout1 :: !Int,
-    -- | A timeout to limit the time (in milliseconds) waiting for
-    -- FIN for HTTP/2. 0 means uses immediate close.
-    -- Default: 2000.
-    settingsGracefulCloseTimeout2 :: !Int,
     -- | Determines the maximum header size that Warp will tolerate when using HTTP/1.x.
     settingsMaxTotalHeaderLength :: !Int,
     -- | Specify the header value of Alternative Services (AltSvc:).
@@ -185,7 +169,6 @@ defaultSettings =
       settingsFdCacheDuration = 0,
       settingsFileInfoCacheDuration = 0,
       settingsBeforeMainLoop = return (),
-      settingsAccept = defaultAccept,
       settingsNoParsePath = False,
       settingsServerName = C8.pack $ "Warpless/" ++ showVersion Paths_warpless.version,
       settingsMaximumBodyFlush = Just 8192,
@@ -193,8 +176,6 @@ defaultSettings =
       settingsHTTP2Enabled = True,
       settingsLogger = \_ _ _ -> return (),
       settingsServerPushLogger = \_ _ _ -> return (),
-      settingsGracefulCloseTimeout1 = 0,
-      settingsGracefulCloseTimeout2 = 2000,
       settingsMaxTotalHeaderLength = 50 * 1024,
       settingsAltSvc = Nothing,
       settingsMaxBuilderResponseBufferSize = 1049000000
@@ -255,10 +236,3 @@ defaultOnExceptionResponse e
         H.internalServerError500
         [(H.hContentType, "text/plain; charset=utf-8")]
         "Something went wrong"
-
--- | Standard "accept" call for a listening socket.
---
--- @since 3.3.24
-defaultAccept :: Socket -> IO (Socket, SockAddr)
-defaultAccept =
-  accept

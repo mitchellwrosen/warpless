@@ -10,7 +10,7 @@ import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder.Extra (Next (Chunk, Done, More), runBuilder)
 import Data.IORef (IORef, readIORef, writeIORef)
 import Warpless.Buffer
-import Warpless.Types
+import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer)
 
 toBufIOWith :: Int -> IORef WriteBuffer -> (ByteString -> IO ()) -> Builder -> IO ()
 toBufIOWith maxRspBufSize writeBufferRef io builder = do

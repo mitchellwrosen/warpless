@@ -5,7 +5,6 @@ module Warpless.Types
     ExceptionInsideResponseBody (..),
     FileId (..),
     SendFile,
-    WriteBuffer (..),
     InternalInfo (..),
     Source,
     mkSource,
@@ -18,7 +17,6 @@ where
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Network.Socket.BufferPool
 import System.Posix.Types (Fd)
 import UnliftIO qualified
 import Warpless.Date qualified as D
@@ -94,17 +92,6 @@ data FileId = FileId
 --
 -- Since: 3.1.0
 type SendFile = FileId -> Integer -> Integer -> IO () -> [ByteString] -> IO ()
-
--- | A write buffer of a specified size
--- containing bytes and a way to free the buffer.
-data WriteBuffer = WriteBuffer
-  { bufBuffer :: !Buffer,
-    -- | The size of the write buffer.
-    bufSize :: !BufSize,
-    -- | Free the allocated buffer. Warp guarantees it will only be
-    -- called once, and no other functions will be called after it.
-    bufFree :: !(IO ())
-  }
 
 ----------------------------------------------------------------
 

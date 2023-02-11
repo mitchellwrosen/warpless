@@ -2,6 +2,7 @@ module Warpless.Connection
   ( Connection (..),
     setConnHTTP2,
     socketConnection,
+    cleanupConnection,
   )
 where
 
@@ -9,15 +10,14 @@ import Control.Exception (throwIO)
 import Data.ByteString (ByteString)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import GHC.IO.Exception (IOErrorType (..), IOException (..))
-import Network.Socket (Socket, close, gracefulClose)
+import Network.Socket qualified as Network
 import Network.Socket.BufferPool
 import Network.Socket.ByteString qualified as Sock
 import System.IO.Error (ioeGetErrorType)
 import UnliftIO qualified
-import Warpless.Buffer
 import Warpless.SendFile
-import Warpless.Settings
 import Warpless.Types
+import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer)
 
 -- | Data type to manipulate IO actions for connections.
 --   This is used to abstract IO actions for plain HTTP and HTTP over TLS.
@@ -45,8 +45,8 @@ setConnHTTP2 :: Connection -> Bool -> IO ()
 setConnHTTP2 conn b = writeIORef (connHTTP2 conn) b
 
 -- | Creating 'Connection' for plain HTTP based on a given socket.
-socketConnection :: Settings -> Socket -> IO Connection
-socketConnection set s = do
+socketConnection :: Network.Socket -> IO Connection
+socketConnection s = do
   bufferPool <- newBufferPool 2048 16384
   writeBuffer <- createWriteBuffer 16384
   writeBufferRef <- newIORef writeBuffer
@@ -55,15 +55,10 @@ socketConnection set s = do
     Connection
       { connSendAll = sendall,
         connSendFile = sendfile writeBufferRef,
-        connClose = do
-          h2 <- readIORef isH2
-          let tm =
-                if h2
-                  then settingsGracefulCloseTimeout2 set
-                  else settingsGracefulCloseTimeout1 set
-          if tm == 0
-            then close s
-            else gracefulClose s tm `UnliftIO.catchAny` \(UnliftIO.SomeException _) -> return (),
+        connClose =
+          readIORef isH2 >>= \case
+            False -> Network.close s
+            True -> Network.gracefulClose s 2000 `UnliftIO.catchAny` \_ -> pure (),
         connRecv = receive' s bufferPool,
         connWriteBuffer = writeBufferRef,
         connHTTP2 = isH2
@@ -99,3 +94,9 @@ socketConnection set s = do
         )
         UnliftIO.throwIO
         $ Sock.sendAll s bytes
+
+cleanupConnection :: Connection -> IO ()
+cleanupConnection Connection {connClose, connWriteBuffer} = do
+  _ <- UnliftIO.tryAny connClose
+  writeBuffer <- readIORef connWriteBuffer
+  bufFree writeBuffer

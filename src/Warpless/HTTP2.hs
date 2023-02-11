@@ -24,6 +24,7 @@ import Warpless.HTTP2.Request
 import Warpless.HTTP2.Response
 import Warpless.Settings qualified as S
 import Warpless.Types
+import Warpless.WriteBuffer (WriteBuffer (..))
 
 ----------------------------------------------------------------
 

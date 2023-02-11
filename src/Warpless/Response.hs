@@ -19,6 +19,7 @@ import Data.ByteString.Builder.HTTP.Chunked (chunkedTransferEncoding, chunkedTra
 import Data.ByteString.Char8 qualified as C8
 import Data.CaseInsensitive qualified as CI
 import Data.Function (on)
+import Data.IORef (readIORef)
 import Data.List (deleteBy)
 import Data.Maybe (isJust, mapMaybe)
 import Data.Streaming.ByteString.Builder (newByteStringBuilderRecv, reuseBufferStrategy)
@@ -30,7 +31,6 @@ import Network.Wai
 import Network.Wai.Internal
 import Paths_warpless qualified
 import UnliftIO qualified
-import Warpless.Buffer (toBuilderBuffer)
 import Warpless.Connection (Connection (..))
 import Warpless.Date qualified as D
 import Warpless.File
@@ -39,6 +39,7 @@ import Warpless.IO (toBufIOWith)
 import Warpless.ResponseHeader
 import Warpless.Settings
 import Warpless.Types
+import Warpless.WriteBuffer (toBuilderBuffer)
 
 -- | Sending a HTTP response to 'Connection' according to 'Response'.
 --
@@ -224,10 +225,8 @@ sendRsp conn _ ver s hs _ maxRspBufSize (RspBuilder body needsChunked) = do
 
 sendRsp conn _ ver s hs _ _ (RspStream streamingBody needsChunked) = do
   header <- composeHeaderBuilder ver s hs needsChunked
-  (recv, finish) <-
-    newByteStringBuilderRecv $
-      reuseBufferStrategy $
-        toBuilderBuffer $ connWriteBuffer conn
+  writeBuffer <- readIORef (connWriteBuffer conn)
+  (recv, finish) <- newByteStringBuilderRecv (reuseBufferStrategy (toBuilderBuffer writeBuffer))
   let send builder = do
         popper <- recv builder
         let loop = do
