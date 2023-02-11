@@ -21,6 +21,7 @@ import Warpless.ReadInt
 import Warpless.Request
 import Warpless.Response
 import Warpless.Settings
+import Warpless.Source (Source, leftoverSource, mkSource, readSource)
 import Warpless.Types
 
 http1 :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()

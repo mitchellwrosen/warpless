@@ -30,6 +30,7 @@ import Warpless.Header
 import Warpless.ReadInt
 import Warpless.RequestHeader
 import Warpless.Settings (Settings, settingsMaxTotalHeaderLength, settingsNoParsePath)
+import Warpless.Source (Source, leftoverSource, readSource, readSource')
 import Warpless.Types
 import Prelude hiding (lines)
 

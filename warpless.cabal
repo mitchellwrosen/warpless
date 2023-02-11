@@ -90,6 +90,7 @@ Library
     Warpless.Run
     Warpless.SendFile
     Warpless.Settings
+    Warpless.Source
     Warpless.Types
     Warpless.WriteBuffer
   ghc-options:

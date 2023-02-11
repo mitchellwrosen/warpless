@@ -8,15 +8,16 @@ where
 
 import Control.Exception (throwIO)
 import Data.ByteString (ByteString)
+import Data.ByteString qualified as ByteString
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import GHC.IO.Exception (IOErrorType (InvalidArgument, ResourceVanished))
 import Network.Socket qualified as Network
-import Network.Socket.BufferPool
+import Network.Socket.BufferPool qualified as Recv
 import Network.Socket.ByteString qualified as Sock
 import System.IO.Error (ioeGetErrorType)
 import UnliftIO qualified
-import Warpless.SendFile
-import Warpless.Types
+import Warpless.SendFile (sendFile)
+import Warpless.Types (FileId, InvalidRequest (ConnectionClosedByPeer))
 import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer)
 
 -- | Data type to manipulate IO actions for connections.
@@ -48,9 +49,8 @@ setConnHTTP2 conn =
 -- | Creating 'Connection' for plain HTTP based on a given socket.
 socketConnection :: Network.Socket -> IO Connection
 socketConnection socket = do
-  bufferPool <- newBufferPool 2048 16384
-  writeBuffer <- createWriteBuffer 16384
-  writeBufferRef <- newIORef writeBuffer
+  bufferPool <- Recv.newBufferPool 2048 16384
+  connWriteBuffer <- newIORef =<< createWriteBuffer 16384
   isH2 <- newIORef False -- HTTP/1.x
   let connSend :: ByteString -> IO ()
       connSend bytes =
@@ -60,9 +60,9 @@ socketConnection socket = do
             else throwIO ex
   let connRecv :: IO ByteString
       connRecv =
-        receive socket bufferPool `UnliftIO.catch` \ex ->
+        Recv.receive socket bufferPool `UnliftIO.catch` \ex ->
           if ioeGetErrorType ex == InvalidArgument
-            then pure ""
+            then pure ByteString.empty
             else throwIO ex
   pure
     Connection
@@ -73,7 +73,7 @@ socketConnection socket = do
             False -> Network.close socket
             True -> Network.gracefulClose socket 2000 `UnliftIO.catchAny` \_ -> pure (),
         connRecv,
-        connWriteBuffer = writeBufferRef,
+        connWriteBuffer,
         connHTTP2 = isH2
       }
 

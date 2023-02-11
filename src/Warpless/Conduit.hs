@@ -13,6 +13,7 @@ import Data.ByteString qualified as S
 import Data.IORef qualified as I
 import Data.Word (Word8)
 import UnliftIO (assert, throwIO)
+import Warpless.Source (Source, leftoverSource, readSource, readSource')
 import Warpless.Types
 
 ----------------------------------------------------------------
