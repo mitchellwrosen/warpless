@@ -89,9 +89,8 @@ socketConnection set s = do
         hook
         headers
 
-    sendall = sendAll' s
-
-    sendAll' sock bs =
+    sendall :: ByteString -> IO ()
+    sendall bytes =
       UnliftIO.handleJust
         ( \e ->
             if ioeGetErrorType e == ResourceVanished
@@ -99,4 +98,4 @@ socketConnection set s = do
               else Nothing
         )
         UnliftIO.throwIO
-        $ Sock.sendAll sock bs
+        $ Sock.sendAll s bytes
