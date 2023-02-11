@@ -32,8 +32,6 @@ data Connection = Connection
     connClose :: !(IO ()),
     -- | The connection receiving function. This returns "" for EOF or exceptions.
     connRecv :: !Recv,
-    -- | Obsoleted.
-    connRecvBuf :: !(Buffer -> BufSize -> IO Bool),
     -- | Reference to a write buffer. When during sending of a 'Builder'
     -- response it's detected the current 'WriteBuffer' is too small it will be
     -- freed and a new bigger buffer will be created and written to this
@@ -67,7 +65,6 @@ socketConnection set s = do
             then close s
             else gracefulClose s tm `UnliftIO.catchAny` \(UnliftIO.SomeException _) -> return (),
         connRecv = receive' s bufferPool,
-        connRecvBuf = \_ _ -> pure True, -- obsoleted
         connWriteBuffer = writeBufferRef,
         connHTTP2 = isH2
       }
