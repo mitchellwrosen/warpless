@@ -26,13 +26,13 @@ import Warpless.Types
 http1 :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
 http1 settings ii conn app origAddr bs0 = do
   istatus <- newIORef True
-  src <- mkSource (wrappedRecv conn istatus)
+  src <- mkSource (wrappedRecv istatus)
   leftoverSource src bs0
   addr <- getProxyProtocolAddr src
   http1server settings ii conn app addr istatus src
   where
-    wrappedRecv Connection {connRecv = recv} istatus = do
-      bs <- recv
+    wrappedRecv istatus = do
+      bs <- connRecv conn
       when (not (BS.null bs)) (writeIORef istatus True)
       return bs
 

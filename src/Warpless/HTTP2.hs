@@ -51,7 +51,7 @@ http2 settings ii conn app origAddr bs = do
               confPositionReadMaker = pReadMaker ii,
               confTimeoutManager = tm
             }
-    setConnHTTP2 conn True
+    setConnHTTP2 conn
     H2.run conf $ http2server settings ii origAddr app
 
 -- | Converting WAI application to the server type of http2 library.

@@ -24,10 +24,6 @@ source-repository head
   type: git
   location: https://github.com/mitchellwrosen/warpless.git
 
-Flag allow-sendfilefd
-    Description: Allow use of sendfileFd (not available on GNU/kFreeBSD)
-    Default:     True
-
 Library
   Build-Depends:
     base ^>= 4.16 || ^>= 4.17,
@@ -107,7 +103,4 @@ Library
     -Wno-prepositive-qualified-module
     -Wno-safe
     -Wno-unsafe
-
-  if (os(linux) || os(freebsd) || os(darwin)) && flag(allow-sendfilefd)
-      Cpp-Options:   -DSENDFILEFD
   HS-Source-Dirs:       src

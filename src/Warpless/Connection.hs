@@ -1,5 +1,5 @@
 module Warpless.Connection
-  ( Connection (..),
+  ( Connection (connSendAll, connWriteBuffer, connSendFile, connRecv),
     setConnHTTP2,
     socketConnection,
     cleanupConnection,
@@ -9,7 +9,7 @@ where
 import Control.Exception (throwIO)
 import Data.ByteString (ByteString)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import GHC.IO.Exception (IOErrorType (..), IOException (..))
+import GHC.IO.Exception (IOErrorType (InvalidArgument, ResourceVanished))
 import Network.Socket qualified as Network
 import Network.Socket.BufferPool
 import Network.Socket.ByteString qualified as Sock
@@ -25,13 +25,13 @@ data Connection = Connection
   { -- | The sending function.
     connSendAll :: !(ByteString -> IO ()),
     -- | The sending function for files in HTTP/1.1.
-    connSendFile :: !SendFile,
+    connSendFile :: !(FileId -> Integer -> Integer -> IO () -> [ByteString] -> IO ()),
     -- | The connection closing function. Warp guarantees it will only be
     -- called once. Other functions (like 'connRecv') may be called after
     -- 'connClose' is called.
     connClose :: !(IO ()),
     -- | The connection receiving function. This returns "" for EOF or exceptions.
-    connRecv :: !Recv,
+    connRecv :: !(IO ByteString),
     -- | Reference to a write buffer. When during sending of a 'Builder'
     -- response it's detected the current 'WriteBuffer' is too small it will be
     -- freed and a new bigger buffer will be created and written to this
@@ -41,59 +41,41 @@ data Connection = Connection
     connHTTP2 :: !(IORef Bool)
   }
 
-setConnHTTP2 :: Connection -> Bool -> IO ()
-setConnHTTP2 conn b = writeIORef (connHTTP2 conn) b
+setConnHTTP2 :: Connection -> IO ()
+setConnHTTP2 conn =
+  writeIORef (connHTTP2 conn) True
 
 -- | Creating 'Connection' for plain HTTP based on a given socket.
 socketConnection :: Network.Socket -> IO Connection
-socketConnection s = do
+socketConnection socket = do
   bufferPool <- newBufferPool 2048 16384
   writeBuffer <- createWriteBuffer 16384
   writeBufferRef <- newIORef writeBuffer
   isH2 <- newIORef False -- HTTP/1.x
-  return
+  let connSendAll :: ByteString -> IO ()
+      connSendAll bytes =
+        Sock.sendAll socket bytes `UnliftIO.catch` \ex ->
+          if ioeGetErrorType ex == ResourceVanished
+            then throwIO ConnectionClosedByPeer
+            else throwIO ex
+  let connRecv :: IO ByteString
+      connRecv =
+        receive socket bufferPool `UnliftIO.catch` \ex ->
+          if ioeGetErrorType ex == InvalidArgument
+            then pure ""
+            else throwIO ex
+  pure
     Connection
-      { connSendAll = sendall,
-        connSendFile = sendfile writeBufferRef,
+      { connSendAll,
+        connSendFile = sendFile socket,
         connClose =
           readIORef isH2 >>= \case
-            False -> Network.close s
-            True -> Network.gracefulClose s 2000 `UnliftIO.catchAny` \_ -> pure (),
-        connRecv = receive' s bufferPool,
+            False -> Network.close socket
+            True -> Network.gracefulClose socket 2000 `UnliftIO.catchAny` \_ -> pure (),
+        connRecv,
         connWriteBuffer = writeBufferRef,
         connHTTP2 = isH2
       }
-  where
-    receive' sock pool = UnliftIO.handleIO handler $ receive sock pool
-      where
-        handler :: IOException -> IO ByteString
-        handler e
-          | ioeGetErrorType e == InvalidArgument = return ""
-          | otherwise = throwIO e
-
-    sendfile writeBufferRef fid offset len hook headers = do
-      writeBuffer <- readIORef writeBufferRef
-      sendFile
-        s
-        (bufBuffer writeBuffer)
-        (bufSize writeBuffer)
-        sendall
-        fid
-        offset
-        len
-        hook
-        headers
-
-    sendall :: ByteString -> IO ()
-    sendall bytes =
-      UnliftIO.handleJust
-        ( \e ->
-            if ioeGetErrorType e == ResourceVanished
-              then Just ConnectionClosedByPeer
-              else Nothing
-        )
-        UnliftIO.throwIO
-        $ Sock.sendAll s bytes
 
 cleanupConnection :: Connection -> IO ()
 cleanupConnection Connection {connClose, connWriteBuffer} = do

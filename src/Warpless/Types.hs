@@ -4,7 +4,6 @@ module Warpless.Types
     InvalidRequest (..),
     ExceptionInsideResponseBody (..),
     FileId (..),
-    SendFile,
     InternalInfo (..),
     Source,
     mkSource,
@@ -87,11 +86,6 @@ data FileId = FileId
   { fileIdPath :: !FilePath,
     fileIdFd :: !(Maybe Fd)
   }
-
--- |  fileid, offset, length, hook action, HTTP headers
---
--- Since: 3.1.0
-type SendFile = FileId -> Integer -> Integer -> IO () -> [ByteString] -> IO ()
 
 ----------------------------------------------------------------
 

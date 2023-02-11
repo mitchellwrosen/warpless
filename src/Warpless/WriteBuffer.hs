@@ -1,5 +1,5 @@
 module Warpless.WriteBuffer
-  ( WriteBuffer (..),
+  ( WriteBuffer (bufBuffer, bufSize, bufFree),
     createWriteBuffer,
     toBuilderBuffer,
   )
