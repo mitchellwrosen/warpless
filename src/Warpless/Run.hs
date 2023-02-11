@@ -26,10 +26,10 @@ import Warpless.Types
 -- This opens a listen socket on the port defined in 'Settings' and
 -- calls 'runSettingsSocket'.
 run :: Settings -> Application -> IO ()
-run set app =
-  UnliftIO.bracket (bindPortTCP (settingsPort set) (settingsHost set)) close \socket -> do
+run settings app =
+  UnliftIO.bracket (bindPortTCP (settingsPort settings) (settingsHost settings)) close \socket -> do
     setSocketCloseOnExec socket
-    settingsBeforeMainLoop set
+    settingsBeforeMainLoop settings
     dateCache <- DateCache.initialize
     FdCache.withFdCache fdCacheDurationInSeconds \fdc ->
       FileInfoCache.withFileInfoCache fdFileInfoDurationInSeconds \fic -> do
@@ -38,11 +38,11 @@ run set app =
           Ki.scoped \scope -> do
             forever do
               allowInterrupt
-              (s, addr) <- settingsAccept set socket
+              (s, addr) <- settingsAccept settings socket
               setSocketCloseOnExec s
               -- NoDelay causes an error for AF_UNIX.
               setSocketOption s NoDelay 1 `UnliftIO.catchAny` \(SomeException _) -> pure ()
-              conn <- socketConnection set s
+              conn <- socketConnection settings s
               _ :: Ki.Thread () <-
                 Ki.forkWith scope Ki.defaultThreadOptions {Ki.maskingState = MaskedInterruptible} do
                   let cleanup = do
@@ -53,13 +53,13 @@ run set app =
                     unsafeUnmask do
                       -- fixme: Upgrading to HTTP/2 should be supported.
                       bs <- connRecv conn
-                      if settingsHTTP2Enabled set && ByteString.length bs >= 4 && "PRI " `ByteString.isPrefixOf` bs
-                        then http2 set ii conn app addr bs
-                        else http1 set ii conn app addr bs
+                      if settingsHTTP2Enabled settings && ByteString.length bs >= 4 && "PRI " `ByteString.isPrefixOf` bs
+                        then http2 settings ii conn app addr bs
+                        else http1 settings ii conn app addr bs
               pure ()
   where
-    !fdCacheDurationInSeconds = settingsFdCacheDuration set * 1_000_000
-    !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration set * 1_000_000
+    !fdCacheDurationInSeconds = settingsFdCacheDuration settings * 1_000_000
+    !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration settings * 1_000_000
 
 -- | Set flag FileCloseOnExec flag on a socket (on Unix)
 --
