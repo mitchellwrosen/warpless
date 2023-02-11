@@ -46,7 +46,7 @@ http2 settings ii conn app origAddr bs = do
           H2.Config
             { confWriteBuffer = bufBuffer writeBuffer,
               confBufferSize = bufSize writeBuffer,
-              confSendAll = connSendAll conn,
+              confSendAll = connSend conn,
               confReadN = recvN,
               confPositionReadMaker = pReadMaker ii,
               confTimeoutManager = tm

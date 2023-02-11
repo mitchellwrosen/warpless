@@ -205,7 +205,7 @@ sendRsp ::
 sendRsp conn _ ver s hs _ _ RspNoBody = do
   -- Not adding Content-Length.
   -- User agents treats it as Content-Length: 0.
-  composeHeader ver s hs >>= connSendAll conn
+  composeHeader ver s hs >>= connSend conn
   return (Just s, Nothing)
 
 ----------------------------------------------------------------
@@ -218,7 +218,7 @@ sendRsp conn _ ver s hs _ maxRspBufSize (RspBuilder body needsChunked) = do
               <> chunkedTransferTerminator
         | otherwise = header <> body
       writeBufferRef = connWriteBuffer conn
-  toBufIOWith maxRspBufSize writeBufferRef (connSendAll conn) hdrBdy
+  toBufIOWith maxRspBufSize writeBufferRef (connSend conn) hdrBdy
   return (Just s, Nothing) -- fixme: can we tell the actual sent bytes?
 
 ----------------------------------------------------------------
@@ -232,7 +232,7 @@ sendRsp conn _ ver s hs _ _ (RspStream streamingBody needsChunked) = do
         let loop = do
               bs <- popper
               when (not (S.null bs)) do
-                connSendAll conn bs
+                connSend conn bs
                 loop
         loop
       sendChunk
@@ -242,13 +242,13 @@ sendRsp conn _ ver s hs _ _ (RspStream streamingBody needsChunked) = do
   streamingBody sendChunk (sendChunk flush)
   when needsChunked $ send chunkedTransferTerminator
   mbs <- finish
-  maybe (return ()) (connSendAll conn) mbs
+  maybe (return ()) (connSend conn) mbs
   return (Just s, Nothing) -- fixme: can we tell the actual sent bytes?
 
 ----------------------------------------------------------------
 
 sendRsp conn _ _ _ _ _ _ (RspRaw withApp src) = do
-  withApp src (connSendAll conn)
+  withApp src (connSend conn)
   return (Nothing, Nothing)
 
 ----------------------------------------------------------------

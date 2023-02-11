@@ -1,5 +1,5 @@
 module Warpless.Connection
-  ( Connection (connSendAll, connWriteBuffer, connSendFile, connRecv),
+  ( Connection (connSend, connWriteBuffer, connSendFile, connRecv),
     setConnHTTP2,
     socketConnection,
     cleanupConnection,
@@ -23,7 +23,7 @@ import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer)
 --   This is used to abstract IO actions for plain HTTP and HTTP over TLS.
 data Connection = Connection
   { -- | The sending function.
-    connSendAll :: !(ByteString -> IO ()),
+    connSend :: !(ByteString -> IO ()),
     -- | The sending function for files in HTTP/1.1.
     connSendFile :: !(FileId -> Integer -> Integer -> IO () -> [ByteString] -> IO ()),
     -- | The connection closing function. Warp guarantees it will only be
@@ -52,8 +52,8 @@ socketConnection socket = do
   writeBuffer <- createWriteBuffer 16384
   writeBufferRef <- newIORef writeBuffer
   isH2 <- newIORef False -- HTTP/1.x
-  let connSendAll :: ByteString -> IO ()
-      connSendAll bytes =
+  let connSend :: ByteString -> IO ()
+      connSend bytes =
         Sock.sendAll socket bytes `UnliftIO.catch` \ex ->
           if ioeGetErrorType ex == ResourceVanished
             then throwIO ConnectionClosedByPeer
@@ -66,7 +66,7 @@ socketConnection socket = do
             else throwIO ex
   pure
     Connection
-      { connSendAll,
+      { connSend,
         connSendFile = sendFile socket,
         connClose =
           readIORef isH2 >>= \case

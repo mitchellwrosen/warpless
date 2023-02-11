@@ -128,7 +128,7 @@ handleExpect conn ver = \case
         continue
           | ver == H.http11 = "HTTP/1.1 100 Continue\r\n\r\n"
           | otherwise = "HTTP/1.0 100 Continue\r\n\r\n"
-    connSendAll conn continue
+    connSend conn continue
     Conc.yield
   _ -> return ()
 
