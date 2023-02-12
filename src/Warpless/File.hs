@@ -152,7 +152,7 @@ addContentHeaders hs off len size
       let !ctrng = contentRangeHeader off (off + len - 1) size
        in ctrng : hs'
   where
-    !lengthBS = packIntegral len
+    !lengthBS = packInteger len
     !hs' = (H.hContentLength, lengthBS) : (H.hAcceptRanges, "bytes") : hs
 
 -- |

@@ -7,7 +7,7 @@ module Warpless.ReadInt
 where
 
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as S
+import Data.ByteString qualified as ByteString
 import Data.Int (Int64)
 import Data.Word (Word8)
 
@@ -26,8 +26,11 @@ readInt bs = fromIntegral $ readInt64 bs
 {-# NOINLINE readInt64 #-}
 readInt64 :: ByteString -> Int64
 readInt64 bs =
-  S.foldl' (\ !i !c -> i * 10 + fromIntegral (c - 48)) 0 $
-    S.takeWhile isDigit bs
+  ByteString.foldl'
+    (\ !i !c -> i * 10 + fromIntegral (c - 48))
+    0
+    (ByteString.takeWhile isDigit bs)
 
 isDigit :: Word8 -> Bool
-isDigit w = w >= 48 && w <= 57
+isDigit w =
+  w >= 48 && w <= 57

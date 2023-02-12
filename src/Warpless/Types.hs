@@ -12,6 +12,7 @@ import Data.ByteString (ByteString)
 import System.Posix.Types (Fd)
 import UnliftIO qualified
 import Warpless.Date qualified as D
+import Control.Exception (Exception)
 import Warpless.FdCache qualified as F
 import Warpless.FileInfoCache qualified as I
 
@@ -41,6 +42,7 @@ data InvalidRequest
   | -- | Since 3.3.22
     RequestHeaderFieldsTooLarge
   deriving stock (Eq)
+  deriving anyclass (Exception)
 
 instance Show InvalidRequest where
   show (NotEnoughLines xs) = "Warp: Incomplete request headers, received: " ++ show xs
@@ -53,8 +55,6 @@ instance Show InvalidRequest where
   show RequestHeaderFieldsTooLarge = "Request header fields too large"
   show PayloadTooLarge = "Payload too large"
 
-instance UnliftIO.Exception InvalidRequest
-
 ----------------------------------------------------------------
 
 -- | Exception thrown if something goes wrong while in the midst of
@@ -65,8 +65,7 @@ instance UnliftIO.Exception InvalidRequest
 -- or irrecoverable.
 newtype ExceptionInsideResponseBody = ExceptionInsideResponseBody UnliftIO.SomeException
   deriving stock (Show)
-
-instance UnliftIO.Exception ExceptionInsideResponseBody
+  deriving anyclass (Exception)
 
 ----------------------------------------------------------------
 

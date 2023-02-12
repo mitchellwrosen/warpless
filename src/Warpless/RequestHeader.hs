@@ -5,8 +5,8 @@ where
 
 import Control.Monad (when)
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as S
-import Data.ByteString.Char8 qualified as C8 (unpack)
+import Data.ByteString qualified as ByteString
+import Data.ByteString.Char8 qualified as ByteString.Char8 (unpack)
 import Data.ByteString.Internal (ByteString (..), memchr)
 import Data.CaseInsensitive qualified as CI
 import Data.Word (Word8)
@@ -14,26 +14,25 @@ import Foreign.C.Types (CSize)
 import Foreign.ForeignPtr (withForeignPtr)
 import Foreign.Ptr (Ptr, minusPtr, nullPtr, plusPtr)
 import Foreign.Storable (peek)
-import Network.HTTP.Types qualified as H
+import Network.HTTP.Types qualified as Http
 import UnliftIO (throwIO)
 import Warpless.Types
 
 parseHeaderLines ::
   [ByteString] ->
   IO
-    ( H.Method,
+    ( Http.Method,
       ByteString, --  Path
       ByteString, --  Path, parsed
       ByteString, --  Query
-      H.HttpVersion,
-      H.RequestHeaders
+      Http.HttpVersion,
+      Http.RequestHeaders
     )
-parseHeaderLines [] = throwIO $ NotEnoughLines []
-parseHeaderLines (firstLine : otherLines) = do
-  (method, path', query, httpversion) <- parseRequestLine firstLine
-  let path = H.extractPath path'
-      hdr = map parseHeader otherLines
-  return (method, path', path, query, httpversion, hdr)
+parseHeaderLines = \case
+  [] -> throwIO (NotEnoughLines [])
+  firstLine : otherLines -> do
+    (method, path', query, httpversion) <- parseRequestLine firstLine
+    pure (method, path', Http.extractPath path', query, httpversion, map parseHeader otherLines)
 
 ----------------------------------------------------------------
 
@@ -52,46 +51,53 @@ parseHeaderLines (firstLine : otherLines) = do
 parseRequestLine ::
   ByteString ->
   IO
-    ( H.Method,
+    ( Http.Method,
       ByteString, -- Path
       ByteString, -- Query
-      H.HttpVersion
+      Http.HttpVersion
     )
-parseRequestLine requestLine@(PS fptr off len) = withForeignPtr fptr $ \ptr -> do
-  when (len < 14) $ throwIO baderr
-  let methodptr = ptr `plusPtr` off :: Ptr Word8
-      limptr = methodptr `plusPtr` len :: Ptr Word8
+parseRequestLine requestLine@(PS fptr off len) =
+  withForeignPtr fptr \ptr -> do
+    when (len < 14) (throwIO baderr)
 
-  pathptr0 <- memchr methodptr 32 (fromIntegral @Int @CSize len) -- ' '
-  when (pathptr0 == nullPtr || (limptr `minusPtr` pathptr0) < 11) $
-    throwIO baderr
-  let pathptr = pathptr0 `plusPtr` 1 :: Ptr Word8
-      lim1 = limptr `minusPtr` pathptr0
+    let methodptr = ptr `plusPtr` off :: Ptr Word8
+        limptr = methodptr `plusPtr` len :: Ptr Word8
 
-  httpptr0 <- memchr pathptr 32 (fromIntegral @Int @CSize lim1) -- ' '
-  when (httpptr0 == nullPtr || (limptr `minusPtr` httpptr0) < 9) $
-    throwIO baderr
-  let httpptr = httpptr0 `plusPtr` 1 :: Ptr Word8
-      lim2 = httpptr0 `minusPtr` pathptr
+    pathptr0 <- memchr methodptr 32 (fromIntegral @Int @CSize len) -- ' '
+    when (pathptr0 == nullPtr || (limptr `minusPtr` pathptr0) < 11) $
+      throwIO baderr
+    let pathptr = pathptr0 `plusPtr` 1 :: Ptr Word8
+        lim1 = limptr `minusPtr` pathptr0
 
-  checkHTTP httpptr
-  !hv <- httpVersion httpptr
-  queryptr <- memchr pathptr 63 (fromIntegral @Int @CSize lim2) -- '?'
-  let !method = bs ptr methodptr pathptr0
-      !path
-        | queryptr == nullPtr = bs ptr pathptr httpptr0
-        | otherwise = bs ptr pathptr queryptr
-      !query
-        | queryptr == nullPtr = S.empty
-        | otherwise = bs ptr queryptr httpptr0
+    httpptr0 <- memchr pathptr 32 (fromIntegral @Int @CSize lim1) -- ' '
+    when (httpptr0 == nullPtr || (limptr `minusPtr` httpptr0) < 9) $
+      throwIO baderr
+    let httpptr = httpptr0 `plusPtr` 1 :: Ptr Word8
+        lim2 = httpptr0 `minusPtr` pathptr
 
-  return (method, path, query, hv)
+    checkHTTP httpptr
+    !hv <- httpVersion httpptr
+    queryptr <- memchr pathptr 63 (fromIntegral @Int @CSize lim2) -- '?'
+    let !method = bs ptr methodptr pathptr0
+        !path
+          | queryptr == nullPtr = bs ptr pathptr httpptr0
+          | otherwise = bs ptr pathptr queryptr
+        !query
+          | queryptr == nullPtr = ByteString.empty
+          | otherwise = bs ptr queryptr httpptr0
+
+    pure (method, path, query, hv)
   where
-    baderr = BadFirstLine $ C8.unpack requestLine
+    baderr :: InvalidRequest
+    baderr =
+      BadFirstLine (ByteString.Char8.unpack requestLine)
+
     check :: Ptr Word8 -> Int -> Word8 -> IO ()
     check p n w = do
       w0 <- peek $ p `plusPtr` n
       when (w0 /= w) $ throwIO NonHttp
+
+    checkHTTP :: Ptr Word8 -> IO ()
     checkHTTP httpptr = do
       check httpptr 0 72 -- 'H'
       check httpptr 1 84 -- 'T'
@@ -99,15 +105,17 @@ parseRequestLine requestLine@(PS fptr off len) = withForeignPtr fptr $ \ptr -> d
       check httpptr 3 80 -- 'P'
       check httpptr 4 47 -- '/'
       check httpptr 6 46 -- '.'
-    httpVersion :: Ptr Word8 -> IO H.HttpVersion
+    httpVersion :: Ptr Word8 -> IO Http.HttpVersion
     httpVersion httpptr = do
-      major <- peek (httpptr `plusPtr` 5) :: IO Word8
-      minor <- peek (httpptr `plusPtr` 7) :: IO Word8
-      let version
-            | major == 49 = if minor == 49 then H.http11 else H.http10
-            | major == 50 && minor == 48 = H.HttpVersion 2 0
-            | otherwise = H.http10
-      return version
+      major :: Word8 <- peek (httpptr `plusPtr` 5)
+      minor :: Word8 <- peek (httpptr `plusPtr` 7)
+      pure
+        if major == 49
+          then if minor == 49 then Http.http11 else Http.http10
+          else
+            if major == 50 && minor == 48
+              then Http.HttpVersion 2 0
+              else Http.http10
     bs :: Ptr Word8 -> Ptr Word8 -> Ptr Word8 -> ByteString
     bs ptr p0 p1 = PS fptr o l
       where
@@ -126,8 +134,8 @@ parseRequestLine requestLine@(PS fptr off len) = withForeignPtr fptr $ \ptr -> d
 -- ("Host","example.com:8080")
 -- >>> parseHeader "NoSemiColon"
 -- ("NoSemiColon","")
-parseHeader :: ByteString -> H.Header
+parseHeader :: ByteString -> Http.Header
 parseHeader s =
-  let (k, rest) = S.break (== 58) s -- ':'
-      rest' = S.dropWhile (\c -> c == 32 || c == 9) $ S.drop 1 rest
+  let (k, rest) = ByteString.break (== 58) s -- ':'
+      rest' = ByteString.dropWhile (\c -> c == 32 || c == 9) $ ByteString.drop 1 rest
    in (CI.mk k, rest')

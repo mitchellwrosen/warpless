@@ -9,8 +9,8 @@ where
 
 import Control.Monad (when)
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as S
-import Data.IORef qualified as I
+import Data.ByteString qualified as ByteString
+import Data.IORef
 import Data.Word (Word8)
 import UnliftIO (assert, throwIO)
 import Warpless.Source (Source, leftoverSource, readSource, readSource')
@@ -19,12 +19,12 @@ import Warpless.Types
 ----------------------------------------------------------------
 
 -- | Contains a @Source@ and a byte count that is still to be read in.
-data ISource = ISource !Source !(I.IORef Int)
+data ISource = ISource !Source !(IORef Int)
 
 mkISource :: Source -> Int -> IO ISource
 mkISource src cnt = do
-  ref <- I.newIORef cnt
-  return $! ISource src ref
+  ref <- newIORef cnt
+  pure $! ISource src ref
 
 -- | Given an @IsolatedBSSource@ provide a @Source@ that only allows up to the
 -- specified number of bytes to be passed downstream. All leftovers should be
@@ -32,43 +32,41 @@ mkISource src cnt = do
 -- throws a @ConnectionClosedByPeer@ exception.
 readISource :: ISource -> IO ByteString
 readISource (ISource src ref) = do
-  count <- I.readIORef ref
+  count <- readIORef ref
   if count == 0
-    then return S.empty
+    then pure ByteString.empty
     else do
       bs <- readSource src
 
       -- If no chunk available, then there aren't enough bytes in the
       -- stream. Throw a ConnectionClosedByPeer
-      when (S.null bs) $ throwIO ConnectionClosedByPeer
+      when (ByteString.null bs) (throwIO ConnectionClosedByPeer)
 
-      let -- How many of the bytes in this chunk to send downstream
-          toSend = min count (S.length bs)
-          -- How many bytes will still remain to be sent downstream
-          count' = count - toSend
-      case () of
-        ()
+      -- How many of the bytes in this chunk to send downstream
+      let toSend = min count (ByteString.length bs)
+      -- How many bytes will still remain to be sent downstream
+      let count' = count - toSend
+      if count' > 0
+        then do
           -- The expected count is greater than the size of the
           -- chunk we just read. Send the entire chunk
           -- downstream, and then loop on this function for the
           -- next chunk.
-          | count' > 0 -> do
-              I.writeIORef ref count'
-              return bs
-
+          writeIORef ref count'
+          pure bs
+        else do
           -- Some of the bytes in this chunk should not be sent
           -- downstream. Split up the chunk into the sent and
           -- not-sent parts, add the not-sent parts onto the new
           -- source, and send the rest of the chunk downstream.
-          | otherwise -> do
-              let (x, y) = S.splitAt toSend bs
-              leftoverSource src y
-              assert (count' == 0) $ I.writeIORef ref count'
-              return x
+          let (x, y) = ByteString.splitAt toSend bs
+          leftoverSource src y
+          assert (count' == 0) $ writeIORef ref count'
+          pure x
 
 ----------------------------------------------------------------
 
-data CSource = CSource !Source !(I.IORef ChunkState)
+data CSource = CSource !Source !(IORef ChunkState)
 
 data ChunkState
   = NeedLen
@@ -79,92 +77,95 @@ data ChunkState
 
 mkCSource :: Source -> IO CSource
 mkCSource src = do
-  ref <- I.newIORef NeedLen
-  return $! CSource src ref
+  ref <- newIORef NeedLen
+  pure $! CSource src ref
 
 readCSource :: CSource -> IO ByteString
 readCSource (CSource src ref) = do
-  mlen <- I.readIORef ref
+  mlen <- readIORef ref
   go mlen
   where
-    withLen 0 bs = do
-      leftoverSource src bs
-      dropCRLF
-      yield' S.empty DoneChunking
     withLen len bs
-      | S.null bs = do
+      | len == 0 = do
+          leftoverSource src bs
+          dropCRLF
+          yield' ByteString.empty DoneChunking
+      | ByteString.null bs = do
           -- FIXME should this throw an exception if len > 0?
-          I.writeIORef ref DoneChunking
-          return S.empty
+          writeIORef ref DoneChunking
+          pure ByteString.empty
       | otherwise =
-          case S.length bs `compare` fromIntegral len of
+          case ByteString.length bs `compare` fromIntegral len of
             EQ -> yield' bs NeedLenNewline
-            LT -> yield' bs $ HaveLen $ len - fromIntegral (S.length bs)
+            LT -> yield' bs (HaveLen (len - fromIntegral (ByteString.length bs)))
             GT -> do
-              let (x, y) = S.splitAt (fromIntegral len) bs
+              let (x, y) = ByteString.splitAt (fromIntegral len) bs
               leftoverSource src y
               yield' x NeedLenNewline
 
     yield' :: ByteString -> ChunkState -> IO ByteString
     yield' bs mlen = do
-      I.writeIORef ref mlen
-      return bs
+      writeIORef ref mlen
+      pure bs
 
     dropCRLF = do
       bs <- readSource src
-      case S.uncons bs of
-        Nothing -> return ()
+      case ByteString.uncons bs of
+        Nothing -> pure ()
         Just (13, bs') -> dropLF bs'
         Just (10, bs') -> leftoverSource src bs'
         Just _ -> leftoverSource src bs
 
     dropLF bs =
-      case S.uncons bs of
+      case ByteString.uncons bs of
         Nothing -> do
           bs2 <- readSource' src
-          when (not (S.null bs2)) $ dropLF bs2
+          when (not (ByteString.null bs2)) $ dropLF bs2
         Just (10, bs') -> leftoverSource src bs'
         Just _ -> leftoverSource src bs
 
-    go NeedLen = getLen
-    go NeedLenNewline = dropCRLF >> getLen
-    go (HaveLen 0) = do
-      -- Drop the final CRLF
-      dropCRLF
-      I.writeIORef ref DoneChunking
-      return S.empty
-    go (HaveLen len) = do
-      bs <- readSource src
-      withLen len bs
-    go DoneChunking = return S.empty
+    go = \case
+      NeedLen -> getLen
+      NeedLenNewline -> do
+        dropCRLF
+        getLen
+      HaveLen 0 -> do
+        -- Drop the final CRLF
+        dropCRLF
+        writeIORef ref DoneChunking
+        pure ByteString.empty
+      HaveLen len -> do
+        bs <- readSource src
+        withLen len bs
+      DoneChunking -> pure ByteString.empty
 
     -- Get the length from the source, and then pass off control to withLen
     getLen = do
       bs <- readSource src
-      if S.null bs
+      if ByteString.null bs
         then do
-          I.writeIORef ref $ assert False $ HaveLen 0
-          return S.empty
+          writeIORef ref $ assert False $ HaveLen 0
+          pure ByteString.empty
         else do
           (x, y) <-
-            case S.break (== 10) bs of
+            case ByteString.break (== 10) bs of
               (x, y)
-                | S.null y -> do
+                | ByteString.null y -> do
                     bs2 <- readSource' src
-                    return $
-                      if S.null bs2
+                    pure
+                      if ByteString.null bs2
                         then (x, y)
-                        else S.break (== 10) $ bs `S.append` bs2
-                | otherwise -> return (x, y)
+                        else ByteString.break (== 10) $ bs `ByteString.append` bs2
+                | otherwise -> pure (x, y)
           let w =
-                S.foldl' (\i c -> i * 16 + fromIntegral @Word8 @Word (hexToWord c)) 0 $
-                  S.takeWhile isHexDigit x
+                ByteString.foldl' (\i c -> i * 16 + fromIntegral @Word8 @Word (hexToWord c)) 0 $
+                  ByteString.takeWhile isHexDigit x
 
-          let y' = S.drop 1 y
+          let y' = ByteString.drop 1 y
           y'' <-
-            if S.null y'
+            if ByteString.null y'
               then readSource src
-              else return y'
+              else pure y'
           withLen w y''
 
     hexToWord :: Word8 -> Word8
