@@ -3,7 +3,6 @@
 
 module Warpless.ReadInt
   ( readInt,
-    readInt64,
   )
 where
 

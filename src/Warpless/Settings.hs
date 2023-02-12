@@ -7,7 +7,6 @@ module Warpless.Settings
     defaultShouldDisplayException,
     defaultOnException,
     defaultOnExceptionResponse,
-    ProxyProtocol (..),
   )
 where
 
@@ -100,8 +99,6 @@ data Settings = Settings
     --
     -- Default: 8192 bytes.
     settingsMaximumBodyFlush :: !(Maybe Int),
-    -- | Specify usage of the PROXY protocol.
-    settingsProxyProtocol :: !ProxyProtocol,
     -- | Whether to enable HTTP2 ALPN/upgrades. Default: True
     settingsHTTP2Enabled :: !Bool,
     -- | A log function. Default: no action.
@@ -128,35 +125,6 @@ data Settings = Settings
     settingsMaxBuilderResponseBufferSize :: !Int
   }
 
--- | Specify usage of the PROXY protocol.
-data ProxyProtocol
-  = -- | Do not use the PROXY protocol.
-    ProxyProtocolNone
-  | -- | Require PROXY header.
-    --
-    -- This is for cases where a "dumb" TCP/SSL proxy is being used, which cannot
-    -- add an @X-Forwarded-For@ HTTP header field but has enabled support for the
-    -- PROXY protocol.
-    --
-    -- See <http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt> and
-    -- <http://docs.aws.amazon.com/ElasticLoadBalancing/latest/DeveloperGuide/TerminologyandKeyConcepts.html#proxy-protocol>.
-    --
-    -- Only the human-readable header format (version 1) is supported. The binary
-    -- header format (version 2) is /not/ supported.
-    ProxyProtocolRequired
-  | -- | Use the PROXY header if it exists, but also accept
-    -- connections without the header.  See 'setProxyProtocolRequired'.
-    --
-    -- WARNING: This is contrary to the PROXY protocol specification and
-    -- using it can indicate a security problem with your
-    -- architecture if the web server is directly accessible
-    -- to the public, since it would allow easy IP address
-    -- spoofing.  However, it can be useful in some cases,
-    -- such as if a load balancer health check uses regular
-    -- HTTP without the PROXY header, but proxied
-    -- connections /do/ include the PROXY header.
-    ProxyProtocolOptional
-
 -- | The default settings for the Warp server. See the individual settings for
 -- the default value.
 defaultSettings :: Settings
@@ -172,7 +140,6 @@ defaultSettings =
       settingsNoParsePath = False,
       settingsServerName = C8.pack $ "Warpless/" ++ showVersion Paths_warpless.version,
       settingsMaximumBodyFlush = Just 8192,
-      settingsProxyProtocol = ProxyProtocolNone,
       settingsHTTP2Enabled = True,
       settingsLogger = \_ _ _ -> return (),
       settingsServerPushLogger = \_ _ _ -> return (),

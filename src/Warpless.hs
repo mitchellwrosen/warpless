@@ -39,7 +39,6 @@ module Warpless
     -- * Settings
     Settings (..),
     defaultSettings,
-    ProxyProtocol (..),
 
     -- ** Exception handler
     defaultOnException,

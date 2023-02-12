@@ -8,16 +8,13 @@ import Control.Exception (SomeException, fromException, throwIO)
 import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.Char (chr)
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.IP (toHostAddress, toHostAddress6)
-import Network.Socket (SockAddr (SockAddrInet, SockAddrInet6))
+import Network.Socket (SockAddr)
 import Network.Wai
 import Network.Wai.Internal (ResponseReceived (ResponseReceived))
 import UnliftIO qualified
 import Warpless.Connection (Connection (..))
 import Warpless.Header
-import Warpless.ReadInt
 import Warpless.Request
 import Warpless.Response
 import Warpless.Settings
@@ -25,67 +22,15 @@ import Warpless.Source (Source, leftoverSource, mkSource, readSource)
 import Warpless.Types
 
 http1 :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
-http1 settings ii conn app origAddr bs0 = do
+http1 settings ii conn app addr bs0 = do
   istatus <- newIORef True
-  src <- mkSource (wrappedRecv istatus)
-  leftoverSource src bs0
-  addr <- getProxyProtocolAddr src
-  http1server settings ii conn app addr istatus src
-  where
-    wrappedRecv istatus = do
+  src <-
+    mkSource do
       bs <- connRecv conn
       when (not (BS.null bs)) (writeIORef istatus True)
-      return bs
-
-    getProxyProtocolAddr src =
-      case settingsProxyProtocol settings of
-        ProxyProtocolNone ->
-          return origAddr
-        ProxyProtocolRequired -> do
-          seg <- readSource src
-          parseProxyProtocolHeader src seg
-        ProxyProtocolOptional -> do
-          seg <- readSource src
-          if BS.isPrefixOf "PROXY " seg
-            then parseProxyProtocolHeader src seg
-            else do
-              leftoverSource src seg
-              return origAddr
-
-    parseProxyProtocolHeader src seg = do
-      let (header, seg') = BS.break (== 0x0d) seg -- 0x0d == CR
-          maybeAddr = case BS.split 0x20 header of -- 0x20 == space
-            ["PROXY", "TCP4", clientAddr, _, clientPort, _] ->
-              case [x | (x, t) <- reads (decodeAscii clientAddr), null t] of
-                [a] ->
-                  Just
-                    ( SockAddrInet
-                        (readInt clientPort)
-                        (toHostAddress a)
-                    )
-                _ -> Nothing
-            ["PROXY", "TCP6", clientAddr, _, clientPort, _] ->
-              case [x | (x, t) <- reads (decodeAscii clientAddr), null t] of
-                [a] ->
-                  Just
-                    ( SockAddrInet6
-                        (readInt clientPort)
-                        0
-                        (toHostAddress6 a)
-                        0
-                    )
-                _ -> Nothing
-            ("PROXY" : "UNKNOWN" : _) ->
-              Just origAddr
-            _ ->
-              Nothing
-      case maybeAddr of
-        Nothing -> throwIO (BadProxyHeader (decodeAscii header))
-        Just a -> do
-          leftoverSource src (BS.drop 2 seg') -- drop CRLF
-          return a
-
-    decodeAscii = map (chr . fromEnum) . BS.unpack
+      pure bs
+  leftoverSource src bs0
+  http1server settings ii conn app addr istatus src
 
 http1server ::
   Settings ->
@@ -102,13 +47,14 @@ http1server settings ii conn app addr istatus src =
     handler e
       -- See comment below referencing
       -- https://github.com/yesodweb/wai/issues/618
-      | Just NoKeepAliveRequest <- fromException e = return ()
+      | Just NoKeepAliveRequest <- fromException e = pure ()
       -- No valid request
-      | Just (BadFirstLine _) <- fromException e = return ()
+      | Just (BadFirstLine _) <- fromException e = pure ()
       | otherwise = do
           _ <- sendErrorResponse settings ii conn istatus defaultRequest {remoteHost = addr} e
           throwIO e
 
+    loop :: Bool -> IO ()
     loop firstRequest = do
       (req, mremainingRef, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn ii addr src
       keepAlive <-
