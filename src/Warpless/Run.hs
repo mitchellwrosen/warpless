@@ -27,7 +27,6 @@ import Warpless.Types
 run :: Settings -> Application -> IO ()
 run settings app =
   UnliftIO.bracket (bindPortTCP (settingsPort settings) (settingsHost settings)) Network.close \serverSocket -> do
-    settingsBeforeMainLoop settings
     dateCache <- DateCache.initialize
     FdCache.withFdCache fdCacheDurationInSeconds \fdc ->
       FileInfoCache.withFileInfoCache fdFileInfoDurationInSeconds \fic -> do

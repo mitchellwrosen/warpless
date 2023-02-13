@@ -71,12 +71,6 @@ data Settings = Settings
     --
     -- Default value: 0
     settingsFileInfoCacheDuration :: !Int,
-    -- | Code to run after the listening socket is ready but before entering
-    -- the main event loop. Useful for signaling to tests that they can start
-    -- running, or to drop permissions after binding to a restricted port.
-    --
-    -- Default: do nothing.
-    settingsBeforeMainLoop :: !(IO ()),
     -- | Perform no parsing on the rawPathInfo.
     --
     -- This is useful for writing HTTP proxies.
@@ -136,7 +130,6 @@ defaultSettings =
       settingsOnExceptionResponse = defaultOnExceptionResponse,
       settingsFdCacheDuration = 0,
       settingsFileInfoCacheDuration = 0,
-      settingsBeforeMainLoop = return (),
       settingsNoParsePath = False,
       settingsServerName = C8.pack $ "Warpless/" ++ showVersion Paths_warpless.version,
       settingsMaximumBodyFlush = Just 8192,
