@@ -27,7 +27,6 @@ import Warpless.Types
 run :: Settings -> Application -> IO ()
 run settings app =
   UnliftIO.bracket (bindPortTCP (settingsPort settings) (settingsHost settings)) Network.close \serverSocket -> do
-    setSocketCloseOnExec serverSocket
     settingsBeforeMainLoop settings
     dateCache <- DateCache.initialize
     FdCache.withFdCache fdCacheDurationInSeconds \fdc ->
@@ -40,7 +39,6 @@ run settings app =
               (clientSocket, addr) <- Network.accept serverSocket
               _ :: Ki.Thread () <-
                 Ki.forkWith scope Ki.defaultThreadOptions {Ki.maskingState = MaskedInterruptible} do
-                  setSocketCloseOnExec clientSocket
                   -- NoDelay causes an error for AF_UNIX.
                   Network.setSocketOption clientSocket Network.NoDelay 1 `UnliftIO.catchAny` \_ -> pure ()
                   conn <- socketConnection clientSocket
@@ -55,13 +53,3 @@ run settings app =
   where
     !fdCacheDurationInSeconds = settingsFdCacheDuration settings * 1_000_000
     !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration settings * 1_000_000
-
--- | Set flag FileCloseOnExec flag on a socket (on Unix)
---
--- Copied from: https://github.com/mzero/plush/blob/master/src/Plush/Server/Warp.hs
---
--- @since 3.2.17
-setSocketCloseOnExec :: Network.Socket -> IO ()
-setSocketCloseOnExec socket = do
-  fd <- Network.fdSocket socket
-  FdCache.setFileCloseOnExec $ fromIntegral fd
