@@ -29,7 +29,7 @@ import Warpless.WriteBuffer (WriteBuffer (..))
 ----------------------------------------------------------------
 
 http2 :: S.Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
-http2 settings ii conn app origAddr bs = do
+http2 settings ii conn app peerAddr bs = do
   istatus <- newIORef False
   rawRecvN <- makeRecvN bs $ connRecv conn
   writeBuffer <- readIORef $ connWriteBuffer conn
@@ -49,10 +49,12 @@ http2 settings ii conn app origAddr bs = do
               confSendAll = connSend conn,
               confReadN = recvN,
               confPositionReadMaker = pReadMaker ii,
-              confTimeoutManager = tm
+              confTimeoutManager = tm,
+              confMySockAddr = connMySockAddr conn,
+              confPeerSockAddr = peerAddr
             }
     setConnHTTP2 conn
-    H2.run conf $ http2server settings ii origAddr app
+    H2.run conf $ http2server settings ii peerAddr app
 
 -- | Converting WAI application to the server type of http2 library.
 --

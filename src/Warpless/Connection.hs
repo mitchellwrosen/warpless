@@ -1,5 +1,11 @@
 module Warpless.Connection
-  ( Connection (connSend, connWriteBuffer, connSendFile, connRecv),
+  ( Connection
+      ( connMySockAddr,
+        connSend,
+        connSendFile,
+        connRecv,
+        connWriteBuffer
+      ),
     setConnHTTP2,
     socketConnection,
     cleanupConnection,
@@ -11,6 +17,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import GHC.IO.Exception (IOErrorType (InvalidArgument, ResourceVanished))
+import Network.Socket (SockAddr, getSocketName)
 import Network.Socket qualified as Network
 import Network.Socket.BufferPool qualified as Recv
 import Network.Socket.ByteString qualified as Sock
@@ -39,7 +46,8 @@ data Connection = Connection
     -- reference.
     connWriteBuffer :: !(IORef WriteBuffer),
     -- | Is this connection HTTP/2?
-    connHTTP2 :: !(IORef Bool)
+    connHTTP2 :: !(IORef Bool),
+    connMySockAddr :: SockAddr
   }
 
 setConnHTTP2 :: Connection -> IO ()
@@ -52,6 +60,7 @@ socketConnection socket = do
   bufferPool <- Recv.newBufferPool 2048 16384
   connWriteBuffer <- newIORef =<< createWriteBuffer 16384
   isH2 <- newIORef False -- HTTP/1.x
+  mySockAddr <- getSocketName socket
   let connSend :: ByteString -> IO ()
       connSend bytes =
         Sock.sendAll socket bytes `UnliftIO.catch` \ex ->
@@ -74,7 +83,8 @@ socketConnection socket = do
             True -> Network.gracefulClose socket 2000 `UnliftIO.catchAny` \_ -> pure (),
         connRecv,
         connWriteBuffer,
-        connHTTP2 = isH2
+        connHTTP2 = isH2,
+        connMySockAddr = mySockAddr
       }
 
 cleanupConnection :: Connection -> IO ()

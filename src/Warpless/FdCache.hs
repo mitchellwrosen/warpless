@@ -29,12 +29,9 @@ getFdNothing _ = return (Nothing, return ())
 -- | Creating 'MutableFdCache' and executing the action in the second
 --   argument. The first argument is a cache duration in second.
 withFdCache :: Int -> ((FilePath -> IO (Maybe Fd, Refresh)) -> IO a) -> IO a
-withFdCache 0 action = action getFdNothing
-withFdCache duration action =
-  bracket
-    (initialize duration)
-    terminate
-    (action . getFd)
+withFdCache duration action
+  | duration == 0 = action getFdNothing
+  | otherwise = bracket (initialize duration) terminate (action . getFd)
 
 ----------------------------------------------------------------
 
@@ -60,7 +57,7 @@ data FdEntry = FdEntry !Fd !MutableStatus
 
 openFile :: FilePath -> IO Fd
 openFile path = do
-  fd <- openFd path ReadOnly Nothing defaultFileFlags {nonBlock = False}
+  fd <- openFd path ReadOnly defaultFileFlags {nonBlock = False}
   setFileCloseOnExec fd
   return fd
 

@@ -26,7 +26,7 @@ source-repository head
 
 Library
   Build-Depends:
-    base ^>= 4.16 || ^>= 4.17,
+    base ^>= 4.16 || ^>= 4.17 || ^>= 4.18,
     array,
     auto-update ^>= 0.1.3,
     bsb-http-chunked ^>= 0.0,
@@ -44,7 +44,7 @@ Library
     streaming-commons >= 0.1.10,
     text,
     time-manager,
-    unix,
+    unix ^>= 2.8.0,
     vault >= 0.3,
     wai >= 3.2 && < 3.3,
     word8,
