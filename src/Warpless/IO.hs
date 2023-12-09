@@ -8,8 +8,9 @@ import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder.Extra (BufferWriter, Next (Chunk, Done, More), runBuilder)
+import Data.ByteString.Internal (ByteString (PS))
 import Data.IORef (IORef, readIORef, writeIORef)
-import Warpless.Buffer
+import Foreign.ForeignPtr (newForeignPtr_)
 import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer)
 
 toBufIOWith :: Int -> IORef WriteBuffer -> (ByteString -> IO ()) -> Builder -> IO ()
@@ -22,7 +23,8 @@ toBufIOWith maxRspBufSize writeBufferRef io builder = do
       let buf = bufBuffer writeBuffer
           size = bufSize writeBuffer
       (len, signal) <- writer buf size
-      bufferIO buf len io
+      fptr <- newForeignPtr_ buf
+      io (PS fptr 0 len)
       case signal of
         Done -> pure ()
         More minSize next

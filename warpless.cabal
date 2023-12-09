@@ -62,7 +62,6 @@ Library
     Warpless
   other-modules:
     Paths_warpless
-    Warpless.Buffer
     Warpless.Conduit
     Warpless.Connection
     Warpless.Date
