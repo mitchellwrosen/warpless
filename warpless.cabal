@@ -62,6 +62,7 @@ Library
     Warpless
   other-modules:
     Paths_warpless
+    Warpless.ByteString
     Warpless.Conduit
     Warpless.Connection
     Warpless.Date

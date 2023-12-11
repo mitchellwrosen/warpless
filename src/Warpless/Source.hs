@@ -11,15 +11,20 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 
--- | Type for input streaming.
+-- | A source of bytes.
 data Source
   = Source !(IORef ByteString) !(IO ByteString)
 
+-- | Make a source of bytes from an IO action that either:
+--
+-- * Returns one or more bytes, and can be run again.
+-- * Returns zero bytes, indicating that there are no more bytes.
 mkSource :: IO ByteString -> IO Source
 mkSource func = do
   ref <- newIORef ByteString.empty
-  pure $! Source ref func
+  pure (Source ref func)
 
+-- | Read a chunk of bytes.
 readSource :: Source -> IO ByteString
 readSource (Source ref func) = do
   bs <- readIORef ref

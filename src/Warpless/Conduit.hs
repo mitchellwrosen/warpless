@@ -13,6 +13,7 @@ import Data.ByteString qualified as ByteString
 import Data.IORef
 import Data.Word (Word8)
 import UnliftIO (assert, throwIO)
+import Warpless.ByteString qualified as ByteString
 import Warpless.Source (Source, leftoverSource, readSource, readSource')
 import Warpless.Types
 
@@ -24,7 +25,7 @@ data ISource = ISource !Source !(IORef Int)
 mkISource :: Source -> Int -> IO ISource
 mkISource src cnt = do
   ref <- newIORef cnt
-  pure $! ISource src ref
+  pure (ISource src ref)
 
 -- | Given an @IsolatedBSSource@ provide a @Source@ that only allows up to the
 -- specified number of bytes to be passed downstream. All leftovers should be
@@ -66,24 +67,25 @@ readISource (ISource src ref) = do
 
 ----------------------------------------------------------------
 
-data CSource = CSource !Source !(IORef ChunkState)
+data CSource
+  = CSource
+      {-# UNPACK #-} !Source
+      {-# UNPACK #-} !(IORef ChunkState)
 
 data ChunkState
   = NeedLen
   | NeedLenNewline
-  | HaveLen Word
+  | HaveLen {-# UNPACK #-} !Word
   | DoneChunking
-  deriving stock (Show)
 
 mkCSource :: Source -> IO CSource
 mkCSource src = do
   ref <- newIORef NeedLen
-  pure $! CSource src ref
+  pure (CSource src ref)
 
 readCSource :: CSource -> IO ByteString
 readCSource (CSource src ref) = do
-  mlen <- readIORef ref
-  go mlen
+  readIORef ref >>= go
   where
     withLen len bs
       | len == 0 = do
@@ -124,6 +126,7 @@ readCSource (CSource src ref) = do
         Just (10, bs') -> leftoverSource src bs'
         Just _ -> leftoverSource src bs
 
+    go :: ChunkState -> IO ByteString
     go = \case
       NeedLen -> getLen
       NeedLenNewline -> do
@@ -140,6 +143,7 @@ readCSource (CSource src ref) = do
       DoneChunking -> pure ByteString.empty
 
     -- Get the length from the source, and then pass off control to withLen
+    getLen :: IO ByteString
     getLen = do
       bs <- readSource src
       if ByteString.null bs
@@ -148,34 +152,22 @@ readCSource (CSource src ref) = do
           pure ByteString.empty
         else do
           (x, y) <-
-            case ByteString.break (== 10) bs of
+            case ByteString.break (== newline) bs of
               (x, y)
                 | ByteString.null y -> do
                     bs2 <- readSource' src
                     pure
                       if ByteString.null bs2
                         then (x, y)
-                        else ByteString.break (== 10) $ bs `ByteString.append` bs2
+                        else ByteString.break (== newline) $ bs `ByteString.append` bs2
                 | otherwise -> pure (x, y)
-          let w =
-                ByteString.foldl' (\i c -> i * 16 + fromIntegral @Word8 @Word (hexToWord c)) 0 $
-                  ByteString.takeWhile isHexDigit x
-
           let y' = ByteString.drop 1 y
           y'' <-
             if ByteString.null y'
               then readSource src
               else pure y'
-          withLen w y''
+          withLen (ByteString.readHex x) y''
 
-    hexToWord :: Word8 -> Word8
-    hexToWord w
-      | w < 58 = w - 48
-      | w < 71 = w - 55
-      | otherwise = w - 87
-
-isHexDigit :: Word8 -> Bool
-isHexDigit w =
-  w >= 48 && w <= 57
-    || w >= 65 && w <= 70
-    || w >= 97 && w <= 102
+newline :: Word8
+newline =
+  10
