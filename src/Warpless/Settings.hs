@@ -93,8 +93,6 @@ data Settings = Settings
     --
     -- Default: 8192 bytes.
     settingsMaximumBodyFlush :: !(Maybe Int),
-    -- | Whether to enable HTTP2 ALPN/upgrades. Default: True
-    settingsHTTP2Enabled :: !Bool,
     -- | A log function. Default: no action.
     settingsLogger :: !(Request -> H.Status -> Maybe Integer -> IO ()),
     -- | A HTTP/2 server push log function. Default: no action.
@@ -133,7 +131,6 @@ defaultSettings =
       settingsNoParsePath = False,
       settingsServerName = C8.pack $ "Warpless/" ++ showVersion Paths_warpless.version,
       settingsMaximumBodyFlush = Just 8192,
-      settingsHTTP2Enabled = True,
       settingsLogger = \_ _ _ -> return (),
       settingsServerPushLogger = \_ _ _ -> return (),
       settingsMaxTotalHeaderLength = 50 * 1024,

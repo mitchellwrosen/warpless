@@ -19,7 +19,7 @@ import Warpless.FdCache qualified as FdCache
 import Warpless.FileInfoCache qualified as FileInfoCache
 import Warpless.HTTP1 (http1)
 import Warpless.HTTP2 (http2)
-import Warpless.Settings (Settings (settingsFdCacheDuration, settingsFileInfoCacheDuration, settingsHTTP2Enabled, settingsHost, settingsPort))
+import Warpless.Settings (Settings (settingsFdCacheDuration, settingsFileInfoCacheDuration, settingsHost, settingsPort))
 import Warpless.Types (InternalInfo (InternalInfo))
 
 -- | Run an 'Application' with the given 'Settings'.
@@ -51,7 +51,7 @@ handleClient settings app ii clientSocket addr = do
   let action = do
         -- fixme: Upgrading to HTTP/2 should be supported.
         bytes <- connRecv conn
-        if settingsHTTP2Enabled settings && ByteString.length bytes >= 4 && "PRI " `ByteString.isPrefixOf` bytes
+        if ByteString.length bytes >= 4 && "PRI " `ByteString.isPrefixOf` bytes
           then http2 settings ii conn app addr bytes
           else http1 settings ii conn app addr bytes
   unsafeUnmask action `onException` cleanupConnection conn
