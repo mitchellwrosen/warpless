@@ -5,6 +5,7 @@ where
 
 import Data.ByteString.Builder qualified as BB
 import Data.Int (Int64)
+import Data.List qualified as List
 import Network.HTTP.Types qualified as H
 import Network.HTTP2.Server qualified as H2
 import Network.Wai hiding (responseBuilder, responseFile, responseStream)
@@ -25,13 +26,13 @@ fromResponse settings ii req rsp = do
   date <- getDate ii
   rspst@(h2rsp, st, hasBody) <- case rsp of
     ResponseFile st rsphdr path mpart -> do
-      let rsphdr' = add date svr rsphdr
+      let rsphdr' = add date rsphdr
       responseFile st rsphdr' isHead path mpart ii reqhdr
     ResponseBuilder st rsphdr builder -> do
-      let rsphdr' = add date svr rsphdr
+      let rsphdr' = add date rsphdr
       return $ responseBuilder st rsphdr' isHead builder
     ResponseStream st rsphdr strmbdy -> do
-      let rsphdr' = add date svr rsphdr
+      let rsphdr' = add date rsphdr
       return $ responseStream st rsphdr' isHead strmbdy
     _ -> error "ResponseRaw is not supported in HTTP/2"
   mh2data <- getHTTP2Data req
@@ -44,12 +45,12 @@ fromResponse settings ii req rsp = do
   where
     !isHead = requestMethod req == H.methodHead
     !reqhdr = requestHeaders req
-    !svr = S.settingsServerName settings
-    add date server rsphdr =
-      R.addAltSvc settings $
-        (H.hDate, date) : (H.hServer, server) : rsphdr
-
--- fixme: not adding svr if already exists
+    !server = S.settingsServerName settings
+    add date rsphdr =
+      let hasServerHdr = List.find ((== H.hServer) . fst) rsphdr
+          addSVR = maybe ((H.hServer, server) :) (const id) hasServerHdr
+       in R.addAltSvc settings $
+            (H.hDate, date) : addSVR rsphdr
 
 ----------------------------------------------------------------
 
