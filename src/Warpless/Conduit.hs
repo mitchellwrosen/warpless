@@ -20,7 +20,10 @@ import Warpless.Types
 ----------------------------------------------------------------
 
 -- | Contains a @Source@ and a byte count that is still to be read in.
-data ISource = ISource !Source !(IORef Int)
+data ISource
+  = ISource
+      {-# UNPACK #-} !Source
+      {-# UNPACK #-} !(IORef Int)
 
 mkISource :: Source -> Int -> IO ISource
 mkISource src cnt = do
@@ -32,19 +35,18 @@ mkISource src cnt = do
 -- retained within the @Source@. If there are not enough bytes available,
 -- throws a @ConnectionClosedByPeer@ exception.
 readISource :: ISource -> IO ByteString
-readISource (ISource src ref) = do
-  count <- readIORef ref
-  if count == 0
-    then pure ByteString.empty
-    else do
-      bs <- readSource src
+readISource (ISource source ref) = do
+  readIORef ref >>= \case
+    0 -> pure ByteString.empty
+    count -> do
+      bytes <- readSource source
 
       -- If no chunk available, then there aren't enough bytes in the
       -- stream. Throw a ConnectionClosedByPeer
-      when (ByteString.null bs) (throwIO ConnectionClosedByPeer)
+      when (ByteString.null bytes) (throwIO ConnectionClosedByPeer)
 
       -- How many of the bytes in this chunk to send downstream
-      let toSend = min count (ByteString.length bs)
+      let toSend = min count (ByteString.length bytes)
       -- How many bytes will still remain to be sent downstream
       let count' = count - toSend
       if count' > 0
@@ -54,14 +56,14 @@ readISource (ISource src ref) = do
           -- downstream, and then loop on this function for the
           -- next chunk.
           writeIORef ref count'
-          pure bs
+          pure bytes
         else do
           -- Some of the bytes in this chunk should not be sent
           -- downstream. Split up the chunk into the sent and
           -- not-sent parts, add the not-sent parts onto the new
           -- source, and send the rest of the chunk downstream.
-          let (x, y) = ByteString.splitAt toSend bs
-          leftoverSource src y
+          let (x, y) = ByteString.splitAt toSend bytes
+          leftoverSource source y
           assert (count' == 0) $ writeIORef ref count'
           pure x
 
@@ -79,13 +81,26 @@ data ChunkState
   | DoneChunking
 
 mkCSource :: Source -> IO CSource
-mkCSource src = do
+mkCSource source = do
   ref <- newIORef NeedLen
-  pure (CSource src ref)
+  pure (CSource source ref)
 
 readCSource :: CSource -> IO ByteString
 readCSource (CSource src ref) = do
-  readIORef ref >>= go
+  readIORef ref >>= \case
+    NeedLen -> getLen
+    NeedLenNewline -> do
+      dropCRLF
+      getLen
+    HaveLen 0 -> do
+      -- Drop the final CRLF
+      dropCRLF
+      writeIORef ref DoneChunking
+      pure ByteString.empty
+    HaveLen len -> do
+      bs <- readSource src
+      withLen len bs
+    DoneChunking -> pure ByteString.empty
   where
     withLen len bs
       | len == 0 = do
@@ -125,22 +140,6 @@ readCSource (CSource src ref) = do
           when (not (ByteString.null bs2)) $ dropLF bs2
         Just (10, bs') -> leftoverSource src bs'
         Just _ -> leftoverSource src bs
-
-    go :: ChunkState -> IO ByteString
-    go = \case
-      NeedLen -> getLen
-      NeedLenNewline -> do
-        dropCRLF
-        getLen
-      HaveLen 0 -> do
-        -- Drop the final CRLF
-        dropCRLF
-        writeIORef ref DoneChunking
-        pure ByteString.empty
-      HaveLen len -> do
-        bs <- readSource src
-        withLen len bs
-      DoneChunking -> pure ByteString.empty
 
     -- Get the length from the source, and then pass off control to withLen
     getLen :: IO ByteString

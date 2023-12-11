@@ -1,24 +1,24 @@
 module Warpless.WriteBuffer
-  ( WriteBuffer (bufBuffer, bufSize, bufFree),
+  ( WriteBuffer (bufBuffer, bufSize),
     createWriteBuffer,
+    freeWriteBuffer,
     toBuilderBuffer,
   )
 where
 
 import Data.Streaming.ByteString.Builder.Buffer qualified as B (Buffer (..))
-import Foreign.ForeignPtr
+import Foreign.ForeignPtr (newForeignPtr_)
 import Foreign.Marshal.Alloc (free, mallocBytes)
 import Foreign.Ptr (plusPtr)
-import Network.Socket.BufferPool
+import Network.Socket.BufferPool (BufSize, Buffer)
 
--- | A write buffer of a specified size
--- containing bytes and a way to free the buffer.
+-- | A write buffer of a specified size containing bytes and a way to free the buffer.
 data WriteBuffer = WriteBuffer
   { bufBuffer :: !Buffer,
     -- | The size of the write buffer.
     bufSize :: !BufSize,
-    -- | Free the allocated buffer. Warp guarantees it will only be
-    -- called once, and no other functions will be called after it.
+    -- | Free the allocated buffer. Warp guarantees it will only be called once, and no other functions will be called
+    -- after it.
     bufFree :: !(IO ())
   }
 
@@ -33,6 +33,10 @@ createWriteBuffer size = do
         bufSize = size,
         bufFree = free bytes
       }
+
+freeWriteBuffer :: WriteBuffer -> IO ()
+freeWriteBuffer WriteBuffer {bufFree} =
+  bufFree
 
 toBuilderBuffer :: WriteBuffer -> IO B.Buffer
 toBuilderBuffer writeBuffer = do

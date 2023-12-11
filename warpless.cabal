@@ -66,6 +66,7 @@ Library
     Warpless.Conduit
     Warpless.Connection
     Warpless.Date
+    Warpless.Exception
     Warpless.FdCache
     Warpless.File
     Warpless.FileInfoCache

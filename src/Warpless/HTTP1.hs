@@ -10,27 +10,27 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Network.Socket (SockAddr)
-import Network.Wai
+import Network.Wai (Application, Request (remoteHost), defaultRequest)
 import Network.Wai.Internal (ResponseReceived (ResponseReceived))
 import UnliftIO qualified
 import Warpless.Connection (Connection (..))
-import Warpless.Header
-import Warpless.Request
-import Warpless.Response
-import Warpless.Settings
+import Warpless.Header (IndexedHeader, defaultIndexRequestHeader)
+import Warpless.Request (NoKeepAliveRequest (NoKeepAliveRequest), recvRequest)
+import Warpless.Response (sendResponse)
+import Warpless.Settings (Settings (settingsMaximumBodyFlush, settingsOnException, settingsOnExceptionResponse))
 import Warpless.Source (Source, leftoverSource, mkSource, readSource)
-import Warpless.Types
+import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), InternalInfo, InvalidRequest (BadFirstLine, ConnectionClosedByPeer))
 
 http1 :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
 http1 settings ii conn app addr bs0 = do
   istatus <- newIORef True
-  src <-
+  source <-
     mkSource do
-      bs <- connRecv conn
-      when (not (BS.null bs)) (writeIORef istatus True)
-      pure bs
-  leftoverSource src bs0
-  http1server settings ii conn app addr istatus src
+      bytes <- connRecv conn
+      when (not (BS.null bytes)) (writeIORef istatus True)
+      pure bytes
+  leftoverSource source bs0
+  http1server settings ii conn app addr istatus source
 
 http1server ::
   Settings ->
@@ -166,11 +166,11 @@ flushEntireBody src =
       when (not (BS.null bs)) loop
 
 flushBody ::
-  -- | get next chunk
+  -- get next chunk
   IO ByteString ->
-  -- | maximum to flush
+  -- maximum to flush
   Int ->
-  -- | True == flushed the entire body, False == we didn't
+  -- True == flushed the entire body, False == we didn't
   IO Bool
 flushBody src = loop
   where

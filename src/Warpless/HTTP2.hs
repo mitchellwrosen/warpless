@@ -12,21 +12,19 @@ import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.IORef qualified as I
 import Network.HTTP2.Server qualified as H2
 import Network.Socket (SockAddr)
-import Network.Socket.BufferPool
-import Network.Wai
+import Network.Socket.BufferPool (BufSize, makeRecvN)
+import Network.Wai (Application, responseStatus)
 import Network.Wai.Internal (ResponseReceived (..))
 import System.TimeManager qualified as TimeManager
 import UnliftIO qualified
 import Warpless.Connection (Connection (..), setConnHTTP2)
-import Warpless.HTTP2.File
-import Warpless.HTTP2.PushPromise
-import Warpless.HTTP2.Request
-import Warpless.HTTP2.Response
+import Warpless.HTTP2.File (pReadMaker)
+import Warpless.HTTP2.PushPromise (fromPushPromises)
+import Warpless.HTTP2.Request (toRequest)
+import Warpless.HTTP2.Response (fromResponse)
 import Warpless.Settings qualified as S
-import Warpless.Types
+import Warpless.Types (InternalInfo)
 import Warpless.WriteBuffer (WriteBuffer (..))
-
-----------------------------------------------------------------
 
 http2 :: S.Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
 http2 settings ii conn app peerAddr bs = do

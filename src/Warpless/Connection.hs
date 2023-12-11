@@ -12,7 +12,7 @@ module Warpless.Connection
   )
 where
 
-import Control.Exception (throwIO)
+import Control.Exception (catch, throwIO)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
@@ -22,10 +22,10 @@ import Network.Socket qualified as Network
 import Network.Socket.BufferPool qualified as Recv
 import Network.Socket.ByteString qualified as Sock
 import System.IO.Error (ioeGetErrorType)
-import UnliftIO qualified
+import Warpless.Exception (ignoringExceptions)
 import Warpless.SendFile (sendFile)
 import Warpless.Types (FileId, InvalidRequest (ConnectionClosedByPeer))
-import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer)
+import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
 
 -- | Data type to manipulate IO actions for connections.
 --   This is used to abstract IO actions for plain HTTP and HTTP over TLS.
@@ -47,7 +47,7 @@ data Connection = Connection
     connWriteBuffer :: !(IORef WriteBuffer),
     -- | Is this connection HTTP/2?
     connHTTP2 :: !(IORef Bool),
-    connMySockAddr :: SockAddr
+    connMySockAddr :: !SockAddr
   }
 
 setConnHTTP2 :: Connection -> IO ()
@@ -59,17 +59,17 @@ socketConnection :: Network.Socket -> IO Connection
 socketConnection socket = do
   bufferPool <- Recv.newBufferPool 2048 16384
   connWriteBuffer <- newIORef =<< createWriteBuffer 16384
-  isH2 <- newIORef False -- HTTP/1.x
+  isHttp2 <- newIORef False -- HTTP/1.x
   mySockAddr <- getSocketName socket
   let connSend :: ByteString -> IO ()
       connSend bytes =
-        Sock.sendAll socket bytes `UnliftIO.catch` \ex ->
+        Sock.sendAll socket bytes `catch` \(ex :: IOError) ->
           if ioeGetErrorType ex == ResourceVanished
             then throwIO ConnectionClosedByPeer
             else throwIO ex
   let connRecv :: IO ByteString
       connRecv =
-        Recv.receive socket bufferPool `UnliftIO.catch` \ex ->
+        Recv.receive socket bufferPool `catch` \(ex :: IOError) ->
           if ioeGetErrorType ex == InvalidArgument
             then pure ByteString.empty
             else throwIO ex
@@ -78,17 +78,20 @@ socketConnection socket = do
       { connSend,
         connSendFile = sendFile socket,
         connClose =
-          readIORef isH2 >>= \case
-            False -> Network.close socket
-            True -> Network.gracefulClose socket 2000 `UnliftIO.catchAny` \_ -> pure (),
+          readIORef isHttp2 >>= \case
+            False -> Network.close socket -- doesn't throw
+            True -> ignoringExceptions (Network.gracefulClose socket 2000),
         connRecv,
         connWriteBuffer,
-        connHTTP2 = isH2,
+        connHTTP2 = isHttp2,
         connMySockAddr = mySockAddr
       }
 
+-- | Clean up a connection. Never throws an exception.
+--
+-- Precondition: called with exceptions uninterruptibly masked.
 cleanupConnection :: Connection -> IO ()
 cleanupConnection Connection {connClose, connWriteBuffer} = do
-  _ <- UnliftIO.tryAny connClose
+  connClose
   writeBuffer <- readIORef connWriteBuffer
-  bufFree writeBuffer
+  freeWriteBuffer writeBuffer

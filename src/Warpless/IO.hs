@@ -11,7 +11,7 @@ import Data.ByteString.Builder.Extra (BufferWriter, Next (Chunk, Done, More), ru
 import Data.ByteString.Internal (ByteString (PS))
 import Data.IORef (IORef, readIORef, writeIORef)
 import Foreign.ForeignPtr (newForeignPtr_)
-import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer)
+import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
 
 toBufIOWith :: Int -> IORef WriteBuffer -> (ByteString -> IO ()) -> Builder -> IO ()
 toBufIOWith maxRspBufSize writeBufferRef io builder = do
@@ -44,7 +44,7 @@ toBufIOWith maxRspBufSize writeBufferRef io builder = do
               -- frees and missed frees. So we mask async exceptions:
               biggerWriteBuffer <-
                 mask_ do
-                  bufFree writeBuffer
+                  freeWriteBuffer writeBuffer
                   biggerWriteBuffer <- createWriteBuffer minSize
                   writeIORef writeBufferRef biggerWriteBuffer
                   return biggerWriteBuffer
