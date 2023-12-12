@@ -4,10 +4,10 @@ module Warpless.HTTP1
 where
 
 import Control.Concurrent qualified as Conc (yield)
-import Control.Exception (SomeException, fromException, throwIO)
+import Control.Exception (SomeException, catch, fromException, throwIO)
 import Control.Monad (when)
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
+import Data.ByteString qualified as ByteString
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Network.Socket (SockAddr)
 import Network.Wai (Application, Request (remoteHost), defaultRequest)
@@ -19,7 +19,7 @@ import Warpless.Request (NoKeepAliveRequest (NoKeepAliveRequest), recvRequest)
 import Warpless.Response (sendResponse)
 import Warpless.Settings (Settings (settingsMaximumBodyFlush, settingsOnException, settingsOnExceptionResponse))
 import Warpless.Source (Source, leftoverSource, mkSource, readSource)
-import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), InternalInfo, InvalidRequest (BadFirstLine, ConnectionClosedByPeer))
+import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), InternalInfo, InvalidRequest (BadFirstLine, ConnectionClosedByPeer), getFileInfo)
 
 http1 :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
 http1 settings ii conn app addr bs0 = do
@@ -27,7 +27,7 @@ http1 settings ii conn app addr bs0 = do
   source <-
     mkSource do
       bytes <- connRecv conn
-      when (not (BS.null bytes)) (writeIORef istatus True)
+      when (not (ByteString.null bytes)) (writeIORef istatus True)
       pure bytes
   leftoverSource source bs0
   http1server settings ii conn app addr istatus source
@@ -42,27 +42,28 @@ http1server ::
   Source ->
   IO ()
 http1server settings ii conn app addr istatus src =
-  loop True `UnliftIO.catchAny` handler
-  where
-    handler e
+  loop True `catch` \(exception :: SomeException) ->
+    case fromException @NoKeepAliveRequest exception of
       -- See comment below referencing
       -- https://github.com/yesodweb/wai/issues/618
-      | Just NoKeepAliveRequest <- fromException e = pure ()
-      -- No valid request
-      | Just (BadFirstLine _) <- fromException e = pure ()
-      | otherwise = do
-          _ <- sendErrorResponse settings ii conn istatus defaultRequest {remoteHost = addr} e
-          throwIO e
-
+      Just NoKeepAliveRequest -> pure ()
+      Nothing ->
+        case fromException @InvalidRequest exception of
+          -- No valid request
+          Just (BadFirstLine _) -> pure ()
+          _ -> do
+            _ <- sendErrorResponse settings ii conn istatus defaultRequest {remoteHost = addr} exception
+            throwIO exception
+  where
     loop :: Bool -> IO ()
     loop firstRequest = do
-      (req, mremainingRef, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn ii addr src
+      (request, maybeRemaining, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn (getFileInfo ii) addr src
       keepAlive <-
-        processRequest settings ii conn app istatus src req mremainingRef idxhdr nextBodyFlush
+        processRequest settings ii conn app istatus src request maybeRemaining idxhdr nextBodyFlush
           `UnliftIO.catchAny` \e -> do
-            settingsOnException settings (Just req) e
+            settingsOnException settings (Just request) e
             -- Don't throw the error again to prevent calling settingsOnException twice.
-            return False
+            pure False
 
       -- When doing a keep-alive connection, the other side may just
       -- close the connection. We don't want to treat that as an
@@ -73,7 +74,7 @@ http1server settings ii conn app addr istatus src =
       -- throw a NoKeepAliveRequest exception, which we catch here
       -- and ignore. See: https://github.com/yesodweb/wai/issues/618
 
-      when keepAlive $ loop False
+      when keepAlive (loop False)
 
 processRequest ::
   Settings ->
@@ -83,11 +84,11 @@ processRequest ::
   IORef Bool ->
   Source ->
   Request ->
-  Maybe (IORef Int) ->
+  Maybe (IO Int) ->
   IndexedHeader ->
   IO ByteString ->
   IO Bool
-processRequest settings ii conn app istatus src req mremainingRef idxhdr nextBodyFlush = do
+processRequest settings ii conn app istatus src req maybeRemaining idxhdr nextBodyFlush = do
   -- In the event that some scarce resource was acquired during
   -- creating the request, we need to make sure that we don't get
   -- an async exception before calling the ResponseSource.
@@ -129,17 +130,13 @@ processRequest settings ii conn app istatus src req mremainingRef idxhdr nextBod
     -- reading it all in to satisfy a keep-alive request.
     case settingsMaximumBodyFlush settings of
       Just maxToRead | maxToRead > 0 -> do
-        let tryKeepAlive = do
-              -- flush the rest of the request body
-              isComplete <- flushBody nextBodyFlush maxToRead
-              pure isComplete
-        case mremainingRef of
-          Just ref -> do
-            remaining <- readIORef ref
+        case maybeRemaining of
+          Just getRemaining -> do
+            remaining <- getRemaining
             if remaining <= maxToRead
-              then tryKeepAlive
+              then flushBody nextBodyFlush maxToRead
               else return False
-          Nothing -> tryKeepAlive
+          Nothing -> flushBody nextBodyFlush maxToRead
       _ -> do
         flushEntireBody nextBodyFlush
         pure True
@@ -149,7 +146,7 @@ sendErrorResponse :: Settings -> InternalInfo -> Connection -> IORef Bool -> Req
 sendErrorResponse settings ii conn istatus req e = do
   status <- readIORef istatus
   if shouldSendErrorResponse e && status
-    then sendResponse settings conn ii req defaultIndexRequestHeader (return BS.empty) errorResponse
+    then sendResponse settings conn ii req defaultIndexRequestHeader (return ByteString.empty) errorResponse
     else return False
   where
     shouldSendErrorResponse se
@@ -163,7 +160,7 @@ flushEntireBody src =
   where
     loop = do
       bs <- src
-      when (not (BS.null bs)) loop
+      when (not (ByteString.null bs)) loop
 
 flushBody ::
   -- get next chunk
@@ -172,13 +169,13 @@ flushBody ::
   Int ->
   -- True == flushed the entire body, False == we didn't
   IO Bool
-flushBody src = loop
+flushBody src =
+  loop
   where
     loop toRead = do
       bs <- src
-      let toRead' = toRead - BS.length bs
-      case () of
-        ()
-          | BS.null bs -> return True
-          | toRead' >= 0 -> loop toRead'
-          | otherwise -> return False
+      let toRead' = toRead - ByteString.length bs
+      case (ByteString.null bs, toRead' >= 0) of
+        (True, _) -> pure True
+        (_, True) -> loop toRead'
+        _ -> pure False

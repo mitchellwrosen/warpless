@@ -1,8 +1,5 @@
 module Warpless.Conduit
-  ( ISource (..),
-    mkISource,
-    readISource,
-    mkCSource,
+  ( mkCSource,
     readCSource,
   )
 where
@@ -10,64 +7,11 @@ where
 import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
-import Data.IORef
+import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.Word (Word8)
-import UnliftIO (assert, throwIO)
+import UnliftIO (assert)
 import Warpless.ByteString qualified as ByteString
 import Warpless.Source (Source, leftoverSource, readSource, readSource')
-import Warpless.Types
-
-----------------------------------------------------------------
-
--- | Contains a @Source@ and a byte count that is still to be read in.
-data ISource
-  = ISource
-      {-# UNPACK #-} !Source
-      {-# UNPACK #-} !(IORef Int)
-
-mkISource :: Source -> Int -> IO ISource
-mkISource src cnt = do
-  ref <- newIORef cnt
-  pure (ISource src ref)
-
--- | Given an @IsolatedBSSource@ provide a @Source@ that only allows up to the
--- specified number of bytes to be passed downstream. All leftovers should be
--- retained within the @Source@. If there are not enough bytes available,
--- throws a @ConnectionClosedByPeer@ exception.
-readISource :: ISource -> IO ByteString
-readISource (ISource source ref) = do
-  readIORef ref >>= \case
-    0 -> pure ByteString.empty
-    count -> do
-      bytes <- readSource source
-
-      -- If no chunk available, then there aren't enough bytes in the
-      -- stream. Throw a ConnectionClosedByPeer
-      when (ByteString.null bytes) (throwIO ConnectionClosedByPeer)
-
-      -- How many of the bytes in this chunk to send downstream
-      let toSend = min count (ByteString.length bytes)
-      -- How many bytes will still remain to be sent downstream
-      let count' = count - toSend
-      if count' > 0
-        then do
-          -- The expected count is greater than the size of the
-          -- chunk we just read. Send the entire chunk
-          -- downstream, and then loop on this function for the
-          -- next chunk.
-          writeIORef ref count'
-          pure bytes
-        else do
-          -- Some of the bytes in this chunk should not be sent
-          -- downstream. Split up the chunk into the sent and
-          -- not-sent parts, add the not-sent parts onto the new
-          -- source, and send the rest of the chunk downstream.
-          let (x, y) = ByteString.splitAt toSend bytes
-          leftoverSource source y
-          assert (count' == 0) $ writeIORef ref count'
-          pure x
-
-----------------------------------------------------------------
 
 data CSource
   = CSource

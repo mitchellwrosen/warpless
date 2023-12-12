@@ -24,12 +24,13 @@ import Network.Wai.Internal (Request (Request))
 import System.IO.Unsafe (unsafePerformIO)
 import Warpless.Conduit
 import Warpless.Connection (Connection (..))
-import Warpless.FileInfoCache
+import Warpless.FileInfoCache (FileInfo)
 import Warpless.Header
 import Warpless.ReadInt
 import Warpless.RequestHeader (parseHeaderLines)
 import Warpless.Settings (Settings, settingsMaxTotalHeaderLength, settingsNoParsePath)
 import Warpless.Source (Source, leftoverSource, readSource, readSource')
+import Warpless.SourceN qualified as SourceN
 import Warpless.Types
 import Prelude hiding (lines)
 
@@ -40,7 +41,7 @@ recvRequest ::
   Bool ->
   Settings ->
   Connection ->
-  InternalInfo ->
+  (FilePath -> IO FileInfo) ->
   -- | Peer's address.
   SockAddr ->
   -- | Where HTTP request comes from.
@@ -52,11 +53,11 @@ recvRequest ::
   -- Body producing action used for flushing the request body
   IO
     ( Request,
-      Maybe (IORef Int),
+      Maybe (IO Int),
       IndexedHeader,
       IO ByteString
     )
-recvRequest firstRequest settings conn ii addr src = do
+recvRequest firstRequest settings conn getFileInfo addr src = do
   hdrlines <- headerLines (settingsMaxTotalHeaderLength settings) firstRequest src
   (method, unparsedPath, path, query, httpversion, hdr) <- parseHeaderLines hdrlines
   let idxhdr = indexRequestHeader hdr
@@ -65,11 +66,7 @@ recvRequest firstRequest settings conn ii addr src = do
       te = idxhdr ! fromEnum ReqTransferEncoding
       handle100Continue = handleExpect conn httpversion expect
       rawPath = if settingsNoParsePath settings then unparsedPath else path
-      vaultValue =
-        Vault.insert
-          getFileInfoKey
-          (getFileInfo ii)
-          Vault.empty
+      vaultValue = Vault.insert getFileInfoKey getFileInfo Vault.empty
   (rbody, remainingRef, bodyLength) <-
     if isChunked te
       then do
@@ -77,12 +74,10 @@ recvRequest firstRequest settings conn ii addr src = do
         pure (readCSource csrc, Nothing, ChunkedBody)
       else do
         let len = toLength cl
-        isrc@(ISource _ remaining) <- mkISource src len
-        pure (readISource isrc, Just remaining, KnownLength (fromIntegral @Int @Word64 len))
+        sourceN <- SourceN.new src len
+        pure (SourceN.read sourceN, Just (SourceN.remaining sourceN), KnownLength (fromIntegral @Int @Word64 len))
   -- body producing function which will produce '100-continue', if needed
   rbody' <- timeoutBody rbody handle100Continue
-  -- body producing function which will never produce 100-continue
-  rbodyFlush <- timeoutBody rbody (return ())
   let req =
         Request
           { requestMethod = method,
@@ -102,7 +97,7 @@ recvRequest firstRequest settings conn ii addr src = do
             requestHeaderReferer = idxhdr ! fromEnum ReqReferer,
             requestHeaderUserAgent = idxhdr ! fromEnum ReqUserAgent
           }
-  return (req, remainingRef, idxhdr, rbodyFlush)
+  pure (req, remainingRef, idxhdr, rbody)
 
 ----------------------------------------------------------------
 
@@ -125,11 +120,7 @@ data NoKeepAliveRequest = NoKeepAliveRequest
 
 ----------------------------------------------------------------
 
-handleExpect ::
-  Connection ->
-  Http.HttpVersion ->
-  Maybe HeaderValue ->
-  IO ()
+handleExpect :: Connection -> Http.HttpVersion -> Maybe HeaderValue -> IO ()
 handleExpect conn ver = \case
   Just "100-continue" -> do
     let continue :: ByteString
@@ -138,7 +129,7 @@ handleExpect conn ver = \case
           | otherwise = "HTTP/1.0 100 Continue\r\n\r\n"
     connSend conn continue
     Concurrent.yield
-  _ -> return ()
+  _ -> pure ()
 
 ----------------------------------------------------------------
 
@@ -154,10 +145,7 @@ isChunked = \case
 
 ----------------------------------------------------------------
 
-timeoutBody ::
-  IO ByteString ->
-  IO () ->
-  IO (IO ByteString)
+timeoutBody :: IO ByteString -> IO () -> IO (IO ByteString)
 timeoutBody rbody handle100Continue = do
   isFirstRef <- newIORef True
   pure do
@@ -173,8 +161,8 @@ timeoutBody rbody handle100Continue = do
 
 data THStatus
   = THStatus
-      !Int -- running total byte count (excluding current header chunk)
-      !Int -- current header chunk byte count
+      {-# UNPACK #-} !Int -- running total byte count (excluding current header chunk)
+      {-# UNPACK #-} !Int -- current header chunk byte count
       !([ByteString] -> [ByteString]) -- previously parsed lines
       !(ByteString -> ByteString) -- bytestrings to be prepended
 
