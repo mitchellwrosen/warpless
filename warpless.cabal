@@ -67,7 +67,6 @@ Library
     Warpless.Connection
     Warpless.Date
     Warpless.Exception
-    Warpless.FdCache
     Warpless.File
     Warpless.FileInfoCache
     Warpless.HashMap
@@ -80,7 +79,6 @@ Library
     Warpless.HTTP2.Types
     Warpless.Header
     Warpless.IO
-    Warpless.MultiMap
     Warpless.PackInt
     Warpless.ReadInt
     Warpless.Request

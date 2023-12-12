@@ -15,11 +15,10 @@ import UnliftIO qualified
 import Warpless.Connection (Connection (..), cleanupConnection, socketConnection)
 import Warpless.Date qualified as DateCache
 import Warpless.Exception (ignoringExceptions)
-import Warpless.FdCache qualified as FdCache
 import Warpless.FileInfoCache qualified as FileInfoCache
 import Warpless.HTTP1 (http1)
 import Warpless.HTTP2 (http2)
-import Warpless.Settings (Settings (settingsFdCacheDuration, settingsFileInfoCacheDuration, settingsHost, settingsPort))
+import Warpless.Settings (Settings (settingsFileInfoCacheDuration, settingsHost, settingsPort))
 import Warpless.Types (InternalInfo (InternalInfo))
 
 -- | Run an 'Application' with the given 'Settings'.
@@ -29,18 +28,16 @@ run :: Settings -> Application -> IO ()
 run settings app =
   UnliftIO.bracket (bindPortTCP (settingsPort settings) (settingsHost settings)) Network.close \serverSocket -> do
     dateCache <- DateCache.initialize
-    FdCache.withFdCache fdCacheDurationInSeconds \fdc ->
-      FileInfoCache.withFileInfoCache fdFileInfoDurationInSeconds \fic -> do
-        Ki.scoped \scope -> do
-          mask_ do
-            forever do
-              (clientSocket, addr) <- Network.accept serverSocket
-              _ :: Ki.Thread () <-
-                Ki.forkWith scope Ki.defaultThreadOptions {Ki.maskingState = MaskedUninterruptible} do
-                  handleClient settings app (InternalInfo dateCache fdc fic) clientSocket addr
-              pure ()
+    FileInfoCache.withFileInfoCache fdFileInfoDurationInSeconds \fic -> do
+      Ki.scoped \scope -> do
+        mask_ do
+          forever do
+            (clientSocket, addr) <- Network.accept serverSocket
+            _ :: Ki.Thread () <-
+              Ki.forkWith scope Ki.defaultThreadOptions {Ki.maskingState = MaskedUninterruptible} do
+                handleClient settings app (InternalInfo dateCache fic) clientSocket addr
+            pure ()
   where
-    !fdCacheDurationInSeconds = settingsFdCacheDuration settings * 1_000_000
     !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration settings * 1_000_000
 
 handleClient :: Settings -> Application -> InternalInfo -> Network.Socket -> Network.SockAddr -> IO ()

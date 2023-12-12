@@ -13,7 +13,6 @@ import System.Posix.Types (Fd)
 import UnliftIO qualified
 import Warpless.Date qualified as D
 import Control.Exception (Exception)
-import Warpless.FdCache qualified as F
 import Warpless.FileInfoCache qualified as I
 
 ----------------------------------------------------------------
@@ -83,6 +82,5 @@ data FileId = FileId
 
 data InternalInfo = InternalInfo
   { getDate :: !(IO D.GMTDate),
-    getFd :: !(FilePath -> IO (Maybe F.Fd, F.Refresh)),
     getFileInfo :: !(FilePath -> IO I.FileInfo)
   }

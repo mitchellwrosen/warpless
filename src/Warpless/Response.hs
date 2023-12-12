@@ -294,9 +294,8 @@ sendRspFile2XX conn ii ver s hs rspidxhdr maxRspBufSize path beg len isHead
   | isHead = sendRsp conn ii ver s hs rspidxhdr maxRspBufSize RspNoBody
   | otherwise = do
       lheader <- composeHeader ver s hs
-      (mfd, fresher) <- getFd ii path
-      let fid = FileId path mfd
-      connSendFile conn fid beg len fresher [lheader]
+      let fid = FileId path Nothing
+      connSendFile conn fid beg len (pure ()) [lheader]
       return (Just s, Just len)
 
 sendRspFile404 ::

@@ -9,11 +9,11 @@ import Data.ByteString (ByteString)
 import Foreign.C.Error (throwErrno)
 import Foreign.C.Types
 import Foreign.Ptr (Ptr, castPtr)
-import Network.Sendfile
+import Network.Sendfile (FileRange (PartOfFile), sendfileFdWithHeader, sendfileWithHeader)
 import Network.Socket (Socket)
-import Network.Socket.BufferPool
+import Network.Socket.BufferPool (BufSize, Buffer)
 import System.Posix.Types
-import Warpless.Types
+import Warpless.Types (FileId (fileIdFd, fileIdPath))
 
 ----------------------------------------------------------------
 
