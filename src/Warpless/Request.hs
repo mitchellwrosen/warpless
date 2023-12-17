@@ -28,7 +28,7 @@ import Warpless.FileInfoCache (FileInfo)
 import Warpless.Header
 import Warpless.ReadInt
 import Warpless.RequestHeader (parseHeaderLines)
-import Warpless.Settings (Settings, settingsMaxTotalHeaderLength, settingsNoParsePath)
+import Warpless.Settings (Settings, settingsNoParsePath)
 import Warpless.Source (Source, leftoverSource, readSource, readSource')
 import Warpless.SourceN qualified as SourceN
 import Warpless.Types
@@ -58,7 +58,7 @@ recvRequest ::
       IO ByteString
     )
 recvRequest firstRequest settings conn getFileInfo addr src = do
-  hdrlines <- headerLines (settingsMaxTotalHeaderLength settings) firstRequest src
+  hdrlines <- headerLines firstRequest src
   (method, unparsedPath, path, query, httpversion, hdr) <- parseHeaderLines hdrlines
   let idxhdr = indexRequestHeader hdr
       expect = idxhdr ! fromEnum ReqExpect
@@ -101,8 +101,8 @@ recvRequest firstRequest settings conn getFileInfo addr src = do
 
 ----------------------------------------------------------------
 
-headerLines :: Int -> Bool -> Source -> IO [ByteString]
-headerLines maxTotalHeaderLength firstRequest src = do
+headerLines :: Bool -> Source -> IO [ByteString]
+headerLines firstRequest src = do
   bs <- readSource src
   when (ByteString.null bs) do
     -- When we're working on a keep-alive connection and trying to
@@ -112,7 +112,7 @@ headerLines maxTotalHeaderLength firstRequest src = do
     if firstRequest
       then throwIO ConnectionClosedByPeer
       else throwIO NoKeepAliveRequest
-  push maxTotalHeaderLength src (THStatus 0 0 id id) bs
+  push src (THStatus 0 0 id id) bs
 
 data NoKeepAliveRequest = NoKeepAliveRequest
   deriving stock (Show)
@@ -168,75 +168,69 @@ data THStatus
 
 ----------------------------------------------------------------
 
-push :: Int -> Source -> THStatus -> ByteString -> IO [ByteString]
-push maxTotalHeaderLength src (THStatus totalLen chunkLen lines prepend) bs'
-  -- Too many bytes
-  | totalLen + chunkLen > maxTotalHeaderLength = throwIO OverLargeHeader
-  | otherwise =
-      case ByteString.elemIndex 10 bs' of
-        -- No newline find in this chunk.  Add it to the prepend,
-        -- update the length, and continue processing.
-        Nothing -> do
-          bst <- readSource' src
-          when (ByteString.null bst) (throwIO IncompleteHeaders)
+push :: Source -> THStatus -> ByteString -> IO [ByteString]
+push src (THStatus totalLen chunkLen lines prepend) bs' =
+  case ByteString.elemIndex 10 bs' of
+    -- No newline find in this chunk.  Add it to the prepend,
+    -- update the length, and continue processing.
+    Nothing -> do
+      bst <- readSource' src
+      when (ByteString.null bst) (throwIO IncompleteHeaders)
+      push
+        src
+        (THStatus totalLen (chunkLen + ByteString.length bs') lines (ByteString.append bs))
+        bst
+    Just chunkNL -> do
+      let headerNL = chunkNL + ByteString.length (prepend ByteString.empty)
+      let chunkNLlen = chunkNL + 1
+      -- check if there are two more bytes in the bs
+      -- if so, see if the second of those is a horizontal space
+      let isMultiline =
+            if bsLen > headerNL + 1
+              then
+                let c = ByteString.index bs (headerNL + 1)
+                    b = case headerNL of
+                      0 -> False
+                      1 -> ByteString.index bs 0 /= 13
+                      _ -> True
+                 in b && (c == 32 || c == 9)
+              else False
+      if isMultiline
+        then do
+          -- Found a newline, but next line continues as a multiline header
+          -- If we'd just update the entire current chunk up to newline
+          -- we wouldn't count all the dropped newlines in between.
+          -- So update 'chunkLen' with current chunk up to newline
+          -- and use 'chunkLen' later on to add to 'totalLen'.
           push
-            maxTotalHeaderLength
             src
-            (THStatus totalLen (chunkLen + ByteString.length bs') lines (ByteString.append bs))
-            bst
-        Just chunkNL -> do
-          let headerNL = chunkNL + ByteString.length (prepend ByteString.empty)
-          let chunkNLlen = chunkNL + 1
-          -- check if there are two more bytes in the bs
-          -- if so, see if the second of those is a horizontal space
-          let isMultiline =
-                if bsLen > headerNL + 1
-                  then
-                    let c = ByteString.index bs (headerNL + 1)
-                        b = case headerNL of
-                          0 -> False
-                          1 -> ByteString.index bs 0 /= 13
-                          _ -> True
-                     in b && (c == 32 || c == 9)
-                  else False
-          if isMultiline
+            ( THStatus
+                totalLen
+                (chunkLen + chunkNLlen)
+                lines
+                (ByteString.append (ByteString.Unsafe.unsafeTake (checkCR bs headerNL) bs))
+            )
+            (ByteString.drop (headerNL + 1) bs)
+        else do
+          -- Found a newline at position end.
+          let start = headerNL + 1 -- start of next chunk
+          let line = ByteString.Unsafe.unsafeTake (checkCR bs headerNL) bs
+          if ByteString.null line
             then do
-              -- Found a newline, but next line continues as a multiline header
-              -- If we'd just update the entire current chunk up to newline
-              -- we wouldn't count all the dropped newlines in between.
-              -- So update 'chunkLen' with current chunk up to newline
-              -- and use 'chunkLen' later on to add to 'totalLen'.
-              push
-                maxTotalHeaderLength
-                src
-                ( THStatus
-                    totalLen
-                    (chunkLen + chunkNLlen)
-                    lines
-                    (ByteString.append (ByteString.Unsafe.unsafeTake (checkCR bs headerNL) bs))
-                )
-                (ByteString.drop (headerNL + 1) bs)
+              -- leftover
+              when (start < bsLen) (leftoverSource src (ByteString.Unsafe.unsafeDrop start bs))
+              pure (lines [])
             else do
-              -- Found a newline at position end.
-              let start = headerNL + 1 -- start of next chunk
-              let line = ByteString.Unsafe.unsafeTake (checkCR bs headerNL) bs
-              if ByteString.null line
-                then do
-                  -- leftover
-                  when (start < bsLen) (leftoverSource src (ByteString.Unsafe.unsafeDrop start bs))
-                  pure (lines [])
-                else do
-                  -- more headers
-                  let status = THStatus (totalLen + chunkLen + chunkNLlen) 0 (lines . (line :)) id
-                  if start < bsLen
-                    then -- more bytes in this chunk, push again
-
-                      push maxTotalHeaderLength src status (ByteString.Unsafe.unsafeDrop start bs)
-                    else do
-                      -- no more bytes in this chunk, ask for more
-                      bst <- readSource' src
-                      when (ByteString.null bs) (throwIO IncompleteHeaders)
-                      push maxTotalHeaderLength src status bst
+              -- more headers
+              let status = THStatus (totalLen + chunkLen + chunkNLlen) 0 (lines . (line :)) id
+              case start < bsLen of
+                -- more bytes in this chunk, push again
+                True -> push src status (ByteString.Unsafe.unsafeDrop start bs)
+                -- no more bytes in this chunk, ask for more
+                False -> do
+                  bst <- readSource' src
+                  when (ByteString.null bs) (throwIO IncompleteHeaders)
+                  push src status bst
   where
     -- bs: current header chunk, plus maybe (parts of) next header
     bs = prepend bs'

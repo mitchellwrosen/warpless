@@ -85,8 +85,6 @@ data Settings = Settings
     settingsLogger :: !(Request -> H.Status -> Maybe Integer -> IO ()),
     -- | A HTTP/2 server push log function. Default: no action.
     settingsServerPushLogger :: !(Request -> ByteString -> Integer -> IO ()),
-    -- | Determines the maximum header size that Warp will tolerate when using HTTP/1.x.
-    settingsMaxTotalHeaderLength :: !Int,
     -- | Specify the header value of Alternative Services (AltSvc:).
     --
     -- Default: Nothing
@@ -120,7 +118,6 @@ defaultSettings =
       settingsMaximumBodyFlush = Just 8192,
       settingsLogger = \_ _ _ -> return (),
       settingsServerPushLogger = \_ _ _ -> return (),
-      settingsMaxTotalHeaderLength = 50 * 1024,
       settingsAltSvc = Nothing,
       settingsMaxBuilderResponseBufferSize = 1049000000
     }
@@ -147,7 +144,9 @@ defaultShouldDisplayException se
 defaultOnException :: Maybe Request -> SomeException -> IO ()
 defaultOnException _ e =
   when (defaultShouldDisplayException e) $
-    TIO.hPutStrLn stderr $ T.pack $ show e
+    TIO.hPutStrLn stderr $
+      T.pack $
+        show e
 
 -- | Sending 400 for bad requests.
 --   Sending 500 for internal server errors.

@@ -8,11 +8,11 @@ module Warpless.Types
   )
 where
 
+import Control.Exception (Exception)
 import Data.ByteString (ByteString)
 import System.Posix.Types (Fd)
 import UnliftIO qualified
 import Warpless.Date qualified as D
-import Control.Exception (Exception)
 import Warpless.FileInfoCache qualified as I
 
 ----------------------------------------------------------------
@@ -34,7 +34,6 @@ data InvalidRequest
   | NonHttp
   | IncompleteHeaders
   | ConnectionClosedByPeer
-  | OverLargeHeader
   | BadProxyHeader !String
   | -- | Since 3.3.22
     PayloadTooLarge
@@ -49,7 +48,6 @@ instance Show InvalidRequest where
   show NonHttp = "Warp: Request line specified a non-HTTP request"
   show IncompleteHeaders = "Warp: Request headers did not finish transmission"
   show ConnectionClosedByPeer = "Warp: Client closed connection prematurely"
-  show OverLargeHeader = "Warp: Request headers too large, possible memory attack detected. Closing connection."
   show (BadProxyHeader s) = "Warp: Invalid PROXY protocol header: " ++ show s
   show RequestHeaderFieldsTooLarge = "Request header fields too large"
   show PayloadTooLarge = "Payload too large"
