@@ -12,7 +12,7 @@ import Ki qualified
 import Network.Socket qualified as Network
 import Network.Wai (Application)
 import UnliftIO qualified
-import Warpless.Connection (Connection (..), cleanupConnection, socketConnection)
+import Warpless.Connection (cleanupConnection, connRecv, socketConnection)
 import Warpless.Date qualified as DateCache
 import Warpless.Exception (ignoringExceptions)
 import Warpless.FileInfoCache qualified as FileInfoCache

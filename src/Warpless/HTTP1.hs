@@ -13,7 +13,7 @@ import Network.Socket (SockAddr)
 import Network.Wai (Application, Request (remoteHost), defaultRequest)
 import Network.Wai.Internal (ResponseReceived (ResponseReceived))
 import UnliftIO qualified
-import Warpless.Connection (Connection (..))
+import Warpless.Connection (Connection (..), connRecv)
 import Warpless.Header (IndexedHeader, defaultIndexRequestHeader)
 import Warpless.Request (NoKeepAliveRequest (NoKeepAliveRequest), recvRequest)
 import Warpless.Response (sendResponse)

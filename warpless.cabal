@@ -86,7 +86,6 @@ Library
     Warpless.Response
     Warpless.ResponseHeader
     Warpless.Run
-    Warpless.SendFile
     Warpless.Settings
     Warpless.Source
     Warpless.SourceN

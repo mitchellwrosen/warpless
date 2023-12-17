@@ -17,7 +17,7 @@ import Network.Wai (Application, responseStatus)
 import Network.Wai.Internal (ResponseReceived (..))
 import System.TimeManager qualified as TimeManager
 import UnliftIO qualified
-import Warpless.Connection (Connection (..), setConnHTTP2)
+import Warpless.Connection (Connection (..), connRecv, connSend, setConnHTTP2)
 import Warpless.HTTP2.File (pReadMaker)
 import Warpless.HTTP2.PushPromise (fromPushPromises)
 import Warpless.HTTP2.Request (toRequest)
@@ -29,8 +29,8 @@ import Warpless.WriteBuffer (WriteBuffer (..))
 http2 :: S.Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
 http2 settings ii conn app peerAddr bs = do
   istatus <- newIORef False
-  rawRecvN <- makeRecvN bs $ connRecv conn
-  writeBuffer <- readIORef $ connWriteBuffer conn
+  rawRecvN <- makeRecvN bs (connRecv conn)
+  writeBuffer <- readIORef (connWriteBuffer conn)
   UnliftIO.bracket (TimeManager.initialize 30_000_000) TimeManager.stopManager \tm -> do
     -- This thread becomes the sender in http2 library.
     -- In the case of event source, one request comes and one
@@ -57,12 +57,7 @@ http2 settings ii conn app peerAddr bs = do
 -- | Converting WAI application to the server type of http2 library.
 --
 -- Since 3.3.11
-http2server ::
-  S.Settings ->
-  InternalInfo ->
-  SockAddr ->
-  Application ->
-  H2.Server
+http2server :: S.Settings -> InternalInfo -> SockAddr -> Application -> H2.Server
 http2server settings ii addr app h2req0 _aux0 response = do
   req <- toWAIRequest h2req0
   ref <- I.newIORef Nothing

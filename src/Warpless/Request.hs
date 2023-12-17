@@ -23,7 +23,7 @@ import Network.Wai
 import Network.Wai.Internal (Request (Request))
 import System.IO.Unsafe (unsafePerformIO)
 import Warpless.Conduit
-import Warpless.Connection (Connection (..))
+import Warpless.Connection (Connection (..), connSend)
 import Warpless.FileInfoCache (FileInfo)
 import Warpless.Header
 import Warpless.ReadInt

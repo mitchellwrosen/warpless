@@ -1,13 +1,12 @@
 module Warpless.Connection
-  ( Connection
-      ( connMySockAddr,
-        connSend,
-        connSendFile,
-        connRecv,
-        connWriteBuffer
-      ),
+  ( Connection,
     setConnHTTP2,
     socketConnection,
+    connSend,
+    connSendFile,
+    connRecv,
+    connWriteBuffer,
+    connMySockAddr,
     cleanupConnection,
   )
 where
@@ -18,8 +17,9 @@ import Data.ByteString qualified as ByteString
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import GHC.IO.Exception (IOErrorType (InvalidArgument, ResourceVanished))
 import Network.Sendfile (FileRange (PartOfFile), sendfileWithHeader)
-import Network.Socket (SockAddr, getSocketName)
+import Network.Socket (SockAddr, Socket, getSocketName)
 import Network.Socket qualified as Network
+import Network.Socket.BufferPool (BufferPool)
 import Network.Socket.BufferPool qualified as Recv
 import Network.Socket.ByteString qualified as Sock
 import System.IO.Error (ioeGetErrorType)
@@ -30,16 +30,13 @@ import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffe
 -- | Data type to manipulate IO actions for connections.
 --   This is used to abstract IO actions for plain HTTP and HTTP over TLS.
 data Connection = Connection
-  { -- | The sending function.
-    connSend :: !(ByteString -> IO ()),
-    -- | The sending function for files in HTTP/1.1.
-    connSendFile :: !(FilePath -> Integer -> Integer -> IO () -> [ByteString] -> IO ()),
+  { -- | The underlying socket.
+    connSock :: !Socket,
+    bufferPool :: !BufferPool,
     -- | The connection closing function. Warp guarantees it will only be
     -- called once. Other functions (like 'connRecv') may be called after
     -- 'connClose' is called.
     connClose :: !(IO ()),
-    -- | The connection receiving function. This returns "" for EOF or exceptions.
-    connRecv :: !(IO ByteString),
     -- | Reference to a write buffer. When during sending of a 'Builder'
     -- response it's detected the current 'WriteBuffer' is too small it will be
     -- freed and a new bigger buffer will be created and written to this
@@ -61,31 +58,38 @@ socketConnection socket = do
   connWriteBuffer <- newIORef =<< createWriteBuffer 16384
   isHttp2 <- newIORef False -- HTTP/1.x
   mySockAddr <- getSocketName socket
-  let connSend :: ByteString -> IO ()
-      connSend bytes =
-        Sock.sendAll socket bytes `catch` \(ex :: IOError) ->
-          if ioeGetErrorType ex == ResourceVanished
-            then throwIO ConnectionClosedByPeer
-            else throwIO ex
-  let connRecv :: IO ByteString
-      connRecv =
-        Recv.receive socket bufferPool `catch` \(ex :: IOError) ->
-          if ioeGetErrorType ex == InvalidArgument
-            then pure ByteString.empty
-            else throwIO ex
   pure
     Connection
-      { connSend,
-        connSendFile = \path off len act hdr -> sendfileWithHeader socket path (PartOfFile off len) act hdr,
+      { connSock = socket,
+        bufferPool,
         connClose =
           readIORef isHttp2 >>= \case
             False -> Network.close socket -- doesn't throw
             True -> ignoringExceptions (Network.gracefulClose socket 2000),
-        connRecv,
         connWriteBuffer,
         connHTTP2 = isHttp2,
         connMySockAddr = mySockAddr
       }
+
+connSend :: Connection -> ByteString -> IO ()
+connSend Connection {connSock} bytes =
+  Sock.sendAll connSock bytes `catch` \(ex :: IOError) ->
+    if ioeGetErrorType ex == ResourceVanished
+      then throwIO ConnectionClosedByPeer
+      else throwIO ex
+
+-- | The sending function for files in HTTP/1.1.
+connSendFile :: Connection -> FilePath -> Integer -> Integer -> IO () -> [ByteString] -> IO ()
+connSendFile Connection {connSock} path off len =
+  sendfileWithHeader connSock path (PartOfFile off len)
+
+-- | The connection receiving function. This returns "" for EOF or exceptions.
+connRecv :: Connection -> IO ByteString
+connRecv Connection {connSock, bufferPool} =
+  Recv.receive connSock bufferPool `catch` \(ex :: IOError) ->
+    if ioeGetErrorType ex == InvalidArgument
+      then pure ByteString.empty
+      else throwIO ex
 
 -- | Clean up a connection. Never throws an exception.
 --

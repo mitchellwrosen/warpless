@@ -31,7 +31,7 @@ import Network.Wai
 import Network.Wai.Internal
 import Paths_warpless qualified
 import UnliftIO qualified
-import Warpless.Connection (Connection (..))
+import Warpless.Connection (Connection (..), connSend, connSendFile)
 import Warpless.Date qualified as D
 import Warpless.File
 import Warpless.Header
