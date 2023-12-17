@@ -214,7 +214,8 @@ sendRsp conn _ ver s hs _ maxRspBufSize (RspBuilder body needsChunked) = do
   header <- composeHeaderBuilder ver s hs needsChunked
   let hdrBdy
         | needsChunked =
-            header <> chunkedTransferEncoding body
+            header
+              <> chunkedTransferEncoding body
               <> chunkedTransferTerminator
         | otherwise = header <> body
       writeBufferRef = connWriteBuffer conn
@@ -294,8 +295,7 @@ sendRspFile2XX conn ii ver s hs rspidxhdr maxRspBufSize path beg len isHead
   | isHead = sendRsp conn ii ver s hs rspidxhdr maxRspBufSize RspNoBody
   | otherwise = do
       lheader <- composeHeader ver s hs
-      let fid = FileId path Nothing
-      connSendFile conn fid beg len (pure ()) [lheader]
+      connSendFile conn path beg len (pure ()) [lheader]
       return (Just s, Just len)
 
 sendRspFile404 ::

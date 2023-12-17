@@ -3,14 +3,12 @@ module Warpless.Types
     HeaderValue,
     InvalidRequest (..),
     ExceptionInsideResponseBody (..),
-    FileId (..),
     InternalInfo (..),
   )
 where
 
 import Control.Exception (Exception)
 import Data.ByteString (ByteString)
-import System.Posix.Types (Fd)
 import UnliftIO qualified
 import Warpless.Date qualified as D
 import Warpless.FileInfoCache qualified as I
@@ -55,18 +53,6 @@ instance Show InvalidRequest where
 newtype ExceptionInsideResponseBody = ExceptionInsideResponseBody UnliftIO.SomeException
   deriving stock (Show)
   deriving anyclass (Exception)
-
-----------------------------------------------------------------
-
--- | Data type to abstract file identifiers.
---   On Unix, a file descriptor would be specified to make use of
---   the file descriptor cache.
---
--- Since: 3.1.0
-data FileId = FileId
-  { fileIdPath :: !FilePath,
-    fileIdFd :: !(Maybe Fd)
-  }
 
 ----------------------------------------------------------------
 

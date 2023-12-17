@@ -17,14 +17,14 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import GHC.IO.Exception (IOErrorType (InvalidArgument, ResourceVanished))
+import Network.Sendfile (FileRange (PartOfFile), sendfileWithHeader)
 import Network.Socket (SockAddr, getSocketName)
 import Network.Socket qualified as Network
 import Network.Socket.BufferPool qualified as Recv
 import Network.Socket.ByteString qualified as Sock
 import System.IO.Error (ioeGetErrorType)
 import Warpless.Exception (ignoringExceptions)
-import Warpless.SendFile (sendFile)
-import Warpless.Types (FileId, InvalidRequest (ConnectionClosedByPeer))
+import Warpless.Types (InvalidRequest (ConnectionClosedByPeer))
 import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
 
 -- | Data type to manipulate IO actions for connections.
@@ -33,7 +33,7 @@ data Connection = Connection
   { -- | The sending function.
     connSend :: !(ByteString -> IO ()),
     -- | The sending function for files in HTTP/1.1.
-    connSendFile :: !(FileId -> Integer -> Integer -> IO () -> [ByteString] -> IO ()),
+    connSendFile :: !(FilePath -> Integer -> Integer -> IO () -> [ByteString] -> IO ()),
     -- | The connection closing function. Warp guarantees it will only be
     -- called once. Other functions (like 'connRecv') may be called after
     -- 'connClose' is called.
@@ -76,7 +76,7 @@ socketConnection socket = do
   pure
     Connection
       { connSend,
-        connSendFile = sendFile socket,
+        connSendFile = \path off len act hdr -> sendfileWithHeader socket path (PartOfFile off len) act hdr,
         connClose =
           readIORef isHttp2 >>= \case
             False -> Network.close socket -- doesn't throw
