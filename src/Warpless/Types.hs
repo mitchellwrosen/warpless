@@ -34,11 +34,6 @@ data InvalidRequest
   | NonHttp
   | IncompleteHeaders
   | ConnectionClosedByPeer
-  | BadProxyHeader !String
-  | -- | Since 3.3.22
-    PayloadTooLarge
-  | -- | Since 3.3.22
-    RequestHeaderFieldsTooLarge
   deriving stock (Eq)
   deriving anyclass (Exception)
 
@@ -48,9 +43,6 @@ instance Show InvalidRequest where
   show NonHttp = "Warp: Request line specified a non-HTTP request"
   show IncompleteHeaders = "Warp: Request headers did not finish transmission"
   show ConnectionClosedByPeer = "Warp: Client closed connection prematurely"
-  show (BadProxyHeader s) = "Warp: Invalid PROXY protocol header: " ++ show s
-  show RequestHeaderFieldsTooLarge = "Request header fields too large"
-  show PayloadTooLarge = "Payload too large"
 
 ----------------------------------------------------------------
 

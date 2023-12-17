@@ -150,24 +150,8 @@ defaultOnException _ e =
 
 -- | Sending 400 for bad requests.
 --   Sending 500 for internal server errors.
--- Since: 3.1.0
---   Sending 413 for too large payload.
---   Sending 431 for too large headers.
--- Since 3.2.27
 defaultOnExceptionResponse :: SomeException -> Response
 defaultOnExceptionResponse e
-  | Just PayloadTooLarge <-
-      fromException e =
-      responseLBS
-        H.status413
-        [(H.hContentType, "text/plain; charset=utf-8")]
-        "Payload too large"
-  | Just RequestHeaderFieldsTooLarge <-
-      fromException e =
-      responseLBS
-        H.status431
-        [(H.hContentType, "text/plain; charset=utf-8")]
-        "Request header fields too large"
   | Just (_ :: InvalidRequest) <-
       fromException e =
       responseLBS
