@@ -4,12 +4,14 @@ module Warpless.HTTP2.File
 where
 
 import Control.Monad (when)
+import Data.Coerce (coerce)
 import Data.Int (Int64)
+import Data.Word (Word64)
 import Foreign.C.Error (throwErrno)
 import Foreign.C.Types (CChar, CInt (CInt), CSize (CSize))
 import Foreign.Ptr (Ptr, castPtr)
 import Network.HTTP2.Server (PositionRead, PositionReadMaker, Sentinel (Closer))
-import Network.Socket.BufferPool (BufSize, Buffer)
+import Network.Socket.BufferPool (Buffer)
 import System.Posix (Fd, FdOption (CloseOnExec), OpenMode (ReadOnly), closeFd, defaultFileFlags, nonBlock, openFd, setFdOption)
 import System.Posix.Types (ByteCount, COff (COff), CSsize (..), Fd (..), FileOffset)
 
@@ -24,14 +26,13 @@ pReadMaker path = do
   where
     pread :: Fd -> PositionRead
     pread fd off bytes buf =
-      fromIntegral @Int @Int64
-        <$> positionRead fd buf (fromIntegral @Int64 @Int bytes) (fromIntegral @Int64 @Integer off)
+      positionRead fd buf (fromIntegral @Int64 @Word64 bytes) off
 
-positionRead :: Fd -> Buffer -> BufSize -> Integer -> IO Int
+positionRead :: Fd -> Buffer -> Word64 -> Int64 -> IO Int64
 positionRead fd buf siz off = do
-  bytes <- fromIntegral <$> c_pread fd (castPtr buf) (fromIntegral siz) (fromIntegral off)
+  bytes <- c_pread fd (castPtr buf) (coerce @Word64 @CSize siz) (coerce @Int64 @COff off)
   when (bytes < 0) $ throwErrno "positionRead"
-  return bytes
+  pure (fromIntegral @CSsize @Int64 bytes)
 
 foreign import ccall unsafe "pread"
   c_pread :: Fd -> Ptr CChar -> ByteCount -> FileOffset -> IO CSsize
