@@ -17,6 +17,7 @@ import Data.ByteString.Builder.Extra (flush)
 import Data.ByteString.Builder.HTTP.Chunked (chunkedTransferEncoding, chunkedTransferTerminator)
 import Data.ByteString.Char8 qualified as C8
 import Data.CaseInsensitive qualified as CI
+import Data.Foldable (for_)
 import Data.Function (on)
 import Data.IORef (readIORef)
 import Data.List (deleteBy)
@@ -131,15 +132,16 @@ sendResponse settings conn getDate req reqidxhdr src response = do
     (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr (isPersist, isChunked)
     method = requestMethod req
     isHead = method == H.methodHead
-    rsp = case response of
-      ResponseFile _ _ path mPart -> RspFile path mPart reqidxhdr isHead
-      ResponseBuilder _ _ b
-        | isHead -> RspNoBody
-        | otherwise -> RspBuilder b needsChunked
-      ResponseStream _ _ fb
-        | isHead -> RspNoBody
-        | otherwise -> RspStream fb needsChunked
-      ResponseRaw raw _ -> RspRaw raw src
+    rsp =
+      case response of
+        ResponseFile _ _ path mPart -> RspFile path mPart reqidxhdr
+        ResponseBuilder _ _ b
+          | isHead -> RspNoBody
+          | otherwise -> RspBuilder b needsChunked
+        ResponseStream _ _ fb
+          | isHead -> RspNoBody
+          | otherwise -> RspStream fb needsChunked
+        ResponseRaw raw _ -> RspRaw raw src
     -- Make sure we don't hang on to 'response' (avoid space leak)
     !ret = case response of
       ResponseFile {} -> isPersist
@@ -176,7 +178,7 @@ sanitizeHeaderValue v = case C8.lines $ S.filter (/= _cr) v of
 
 data Rsp
   = RspNoBody
-  | RspFile !FilePath !(Maybe FilePart) !IndexedHeader !Bool
+  | RspFile !FilePath !(Maybe FilePart) !IndexedHeader
   | RspBuilder !Builder !Bool
   | RspStream !StreamingBody !Bool
   | RspRaw !(IO ByteString -> (ByteString -> IO ()) -> IO ()) !(IO ByteString)
@@ -234,7 +236,7 @@ sendRsp conn ver s hs _ _ _ (RspStream streamingBody needsChunked) = do
   streamingBody sendChunk (sendChunk flush)
   when needsChunked $ send chunkedTransferTerminator
   mbs <- finish
-  maybe (pure ()) (connSend conn) mbs
+  for_ mbs (connSend conn)
 
 ----------------------------------------------------------------
 
@@ -245,8 +247,8 @@ sendRsp conn _ _ _ _ _ _ (RspRaw withApp src) = do
 
 -- Sophisticated WAI applications.
 -- We respect s0. s0 MUST be a proper value.
-sendRsp conn ver s0 hs0 rspidxhdr maxRspBufSize method (RspFile path (Just part) _ isHead) =
-  sendRspFile2XX conn ver s0 hs rspidxhdr maxRspBufSize method path beg len isHead
+sendRsp conn ver s0 hs0 rspidxhdr maxRspBufSize method (RspFile path (Just part) _) =
+  sendRspFile2XX conn ver s0 hs rspidxhdr maxRspBufSize method path beg len
   where
     beg = filePartOffset part
     len = filePartByteCount part
@@ -256,14 +258,14 @@ sendRsp conn ver s0 hs0 rspidxhdr maxRspBufSize method (RspFile path (Just part)
 
 -- Simple WAI applications.
 -- Status is ignored
-sendRsp conn ver _ hs0 rspidxhdr maxRspBufSize method (RspFile path Nothing reqidxhdr isHead) = do
+sendRsp conn ver _ hs0 rspidxhdr maxRspBufSize method (RspFile path Nothing reqidxhdr) = do
   efinfo <- UnliftIO.tryIO $ getFileInfo path
   case efinfo of
     Left (_ex :: UnliftIO.IOException) ->
       sendRspFile404 conn ver hs0 rspidxhdr maxRspBufSize method
     Right finfo -> case conditionalRequest finfo hs0 method rspidxhdr reqidxhdr of
       WithoutBody s -> sendRsp conn ver s hs0 rspidxhdr maxRspBufSize method RspNoBody
-      WithBody s hs beg len -> sendRspFile2XX conn ver s hs rspidxhdr maxRspBufSize method path beg len isHead
+      WithBody s hs beg len -> sendRspFile2XX conn ver s hs rspidxhdr maxRspBufSize method path beg len
 
 ----------------------------------------------------------------
 
@@ -278,10 +280,9 @@ sendRspFile2XX ::
   FilePath ->
   Integer ->
   Integer ->
-  Bool ->
   IO ()
-sendRspFile2XX conn ver s hs rspidxhdr maxRspBufSize method path beg len isHead
-  | isHead = sendRsp conn ver s hs rspidxhdr maxRspBufSize method RspNoBody
+sendRspFile2XX conn ver s hs rspidxhdr maxRspBufSize method path beg len
+  | method == H.methodHead = sendRsp conn ver s hs rspidxhdr maxRspBufSize method RspNoBody
   | otherwise = do
       lheader <- composeHeader ver s hs
       connSendFile conn path beg len (pure ()) [lheader]
