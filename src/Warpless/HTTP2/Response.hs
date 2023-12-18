@@ -77,7 +77,7 @@ responseFile _ rsphdr method path Nothing reqhdr = do
     Right finfo -> do
       let reqidx = indexRequestHeader reqhdr
           rspidx = indexResponseHeader rsphdr
-      case conditionalRequest finfo rsphdr rspidx reqidx of
+      case conditionalRequest finfo rsphdr method rspidx reqidx of
         WithoutBody s -> return $ responseNoBody s rsphdr
         WithBody s rsphdr' off bytes -> do
           let !off' = off

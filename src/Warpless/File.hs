@@ -7,18 +7,19 @@ module Warpless.File
 where
 
 import Control.Applicative ((<|>))
+import Control.Monad (guard)
 import Data.Array ((!))
 import Data.ByteString (ByteString)
 import Data.ByteString.Char8 qualified as C8 (pack)
-import Data.Maybe (fromMaybe, isJust)
-import Network.HTTP.Date
+import Data.Maybe (fromMaybe, isNothing)
+import Network.HTTP.Date (HTTPDate, parseHTTPDate)
 import Network.HTTP.Types qualified as H
 import Network.HTTP.Types.Header qualified as H
-import Network.Wai
+import Network.Wai (FilePart (filePartByteCount, filePartFileSize, filePartOffset))
 import Numeric (showInt)
 import Warpless.FileInfo (FileInfo (..))
-import Warpless.Header
-import Warpless.PackInt
+import Warpless.Header (IndexedHeader, RequestHeaderIndex (..), ResponseHeaderIndex (ResLastModified))
+import Warpless.PackInt (packInteger)
 
 ----------------------------------------------------------------
 
@@ -32,26 +33,42 @@ data RspFileInfo
 conditionalRequest ::
   FileInfo ->
   H.ResponseHeaders ->
+  H.Method ->
   -- | Response
   IndexedHeader ->
   -- | Request
   IndexedHeader ->
   RspFileInfo
-conditionalRequest finfo hs0 rspidx reqidx = case condition of
+conditionalRequest finfo hs0 method rspidx reqidx = case condition of
   nobody@(WithoutBody _) -> nobody
   WithBody s _ off len ->
     let !hs1 = addContentHeaders hs0 off len size
-        !hasLM = isJust $ rspidx ! fromEnum ResLastModified
-        !hs = [(H.hLastModified, date) | not hasLM] ++ hs1
+        !hs = case rspidx ! fromEnum ResLastModified of
+          Just _ -> hs1
+          Nothing -> (H.hLastModified, date) : hs1
      in WithBody s hs off len
   where
     !mtime = fileInfoTime finfo
     !size = fileInfoSize finfo
     !date = fileInfoDate finfo
+    -- According to RFC 9110:
+    -- "A recipient cache or origin server MUST evaluate the request
+    -- preconditions defined by this specification in the following order:
+    -- - If-Match
+    -- - If-Unmodified-Since
+    -- - If-None-Match
+    -- - If-Modified-Since
+    -- - If-Range
+    --
+    -- We don't actually implement the If-(None-)Match logic, but
+    -- we also don't want to block middleware or applications from
+    -- using ETags. And sending If-(None-)Match headers in a request
+    -- to a server that doesn't use them is requester's problem.
     !mcondition =
-      ifmodified reqidx size mtime
-        <|> ifunmodified reqidx size mtime
-        <|> ifrange reqidx size mtime
+      ifunmodified reqidx mtime
+        <|> ifmodified reqidx mtime method
+        <|> ifrange reqidx mtime method size
+
     !condition = fromMaybe (unconditional reqidx size) mcondition
 
 ----------------------------------------------------------------
@@ -67,35 +84,47 @@ ifRange reqidx = reqidx ! fromEnum ReqIfRange >>= parseHTTPDate
 
 ----------------------------------------------------------------
 
-ifmodified :: IndexedHeader -> Integer -> HTTPDate -> Maybe RspFileInfo
-ifmodified reqidx size mtime = do
+ifmodified :: IndexedHeader -> HTTPDate -> H.Method -> Maybe RspFileInfo
+ifmodified reqidx mtime method = do
   date <- ifModifiedSince reqidx
-  return $
-    if date /= mtime
-      then unconditional reqidx size
-      else WithoutBody H.notModified304
+  -- According to RFC 9110:
+  -- "A recipient MUST ignore If-Modified-Since if the request
+  -- contains an If-None-Match header field; [...]"
+  guard . isNothing $ reqidx ! fromEnum ReqIfNoneMatch
+  -- "A recipient MUST ignore the If-Modified-Since header field
+  -- if [...] the request method is neither GET nor HEAD."
+  guard $ method == H.methodGet || method == H.methodHead
+  guard $ date == mtime || date > mtime
+  Just $ WithoutBody H.notModified304
 
-ifunmodified :: IndexedHeader -> Integer -> HTTPDate -> Maybe RspFileInfo
-ifunmodified reqidx size mtime = do
+ifunmodified :: IndexedHeader -> HTTPDate -> Maybe RspFileInfo
+ifunmodified reqidx mtime = do
   date <- ifUnmodifiedSince reqidx
-  return $
-    if date == mtime
-      then unconditional reqidx size
-      else WithoutBody H.preconditionFailed412
+  -- According to RFC 9110:
+  -- "A recipient MUST ignore If-Unmodified-Since if the request
+  -- contains an If-Match header field; [...]"
+  guard . isNothing $ reqidx ! fromEnum ReqIfMatch
+  guard $ date /= mtime && date < mtime
+  Just $ WithoutBody H.preconditionFailed412
 
-ifrange :: IndexedHeader -> Integer -> HTTPDate -> Maybe RspFileInfo
-ifrange reqidx size mtime = do
+ifrange :: IndexedHeader -> HTTPDate -> H.Method -> Integer -> Maybe RspFileInfo
+ifrange reqidx mtime method size = do
+  -- According to RFC 9110:
+  -- "When the method is GET and both Range and If-Range are
+  -- present, evaluate the If-Range precondition:"
   date <- ifRange reqidx
   rng <- reqidx ! fromEnum ReqRange
-  return $
+  guard $ method == H.methodGet
+  pure
     if date == mtime
       then parseRange rng size
       else WithBody H.ok200 [] 0 size
 
 unconditional :: IndexedHeader -> Integer -> RspFileInfo
-unconditional reqidx size = case reqidx ! fromEnum ReqRange of
-  Nothing -> WithBody H.ok200 [] 0 size
-  Just rng -> parseRange rng size
+unconditional reqidx =
+  case reqidx ! fromEnum ReqRange of
+    Nothing -> WithBody H.ok200 [] 0
+    Just rng -> parseRange rng
 
 ----------------------------------------------------------------
 
@@ -125,9 +154,8 @@ contentRangeHeader :: Integer -> Integer -> Integer -> H.Header
 contentRangeHeader beg end total = (H.hContentRange, range)
   where
     range =
-      C8.pack
       -- building with ShowS
-      $
+      C8.pack $
         'b'
           : 'y'
           : 't'
@@ -136,14 +164,9 @@ contentRangeHeader beg end total = (H.hContentRange, range)
           : ' '
           : ( if beg > end
                 then ('*' :)
-                else
-                  showInt beg
-                    . ('-' :)
-                    . showInt end
+                else showInt beg . ('-' :) . showInt end
             )
-            ( '/'
-                : showInt total ""
-            )
+            ('/' : showInt total "")
 
 addContentHeaders :: H.ResponseHeaders -> Integer -> Integer -> Integer -> H.ResponseHeaders
 addContentHeaders hs off len size

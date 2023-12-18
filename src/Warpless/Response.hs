@@ -270,7 +270,7 @@ sendRsp conn ver _ hs0 rspidxhdr maxRspBufSize method (RspFile path Nothing reqi
   case efinfo of
     Left (_ex :: UnliftIO.IOException) ->
       sendRspFile404 conn ver hs0 rspidxhdr maxRspBufSize method
-    Right finfo -> case conditionalRequest finfo hs0 rspidxhdr reqidxhdr of
+    Right finfo -> case conditionalRequest finfo hs0 method rspidxhdr reqidxhdr of
       WithoutBody s -> sendRsp conn ver s hs0 rspidxhdr maxRspBufSize method RspNoBody
       WithBody s hs beg len -> sendRspFile2XX conn ver s hs rspidxhdr maxRspBufSize method path beg len isHead
 
