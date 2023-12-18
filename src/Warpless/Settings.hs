@@ -55,17 +55,6 @@ data Settings = Settings
     --   If an empty string is set, the \"Server:\" header is not sent.
     --   This is true even if an application set one.
     settingsServerName :: !ByteString,
-    -- | The maximum number of bytes to flush from an unconsumed request body.
-    --
-    -- By default, Warp does not flush the request body so that, if a large body is
-    -- present, the connection is simply terminated instead of wasting time and
-    -- bandwidth on transmitting it. However, some clients do not deal with that
-    -- situation well. You can either change this setting to @Nothing@ to flush the
-    -- entire body in all cases, or in your application ensure that you always
-    -- consume the entire request body.
-    --
-    -- Default: 8192 bytes.
-    settingsMaximumBodyFlush :: !(Maybe Int),
     -- | A HTTP/2 server push log function. Default: no action.
     settingsServerPushLogger :: !(Request -> ByteString -> Integer -> IO ()),
     -- | Specify the header value of Alternative Services (AltSvc:).
@@ -97,7 +86,6 @@ defaultSettings =
       settingsOnExceptionResponse = defaultOnExceptionResponse,
       settingsNoParsePath = False,
       settingsServerName = C8.pack $ "Warpless/" ++ showVersion Paths_warpless.version,
-      settingsMaximumBodyFlush = Just 8192,
       settingsServerPushLogger = \_ _ _ -> return (),
       settingsAltSvc = Nothing,
       settingsMaxBuilderResponseBufferSize = 1049000000

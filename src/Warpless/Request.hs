@@ -44,12 +44,10 @@ recvRequest ::
   Source ->
   -- |
   -- 'Request' passed to 'Application',
-  -- how many bytes remain to be consumed, if known
   -- 'IndexedHeader' of HTTP request for internal use,
   -- Body producing action used for flushing the request body
   IO
     ( Request,
-      Maybe (IO Int),
       IndexedHeader,
       IO ByteString
     )
@@ -63,15 +61,15 @@ recvRequest isFirstRequest settings conn addr source = do
       te = idxhdr ! fromEnum ReqTransferEncoding
       handle100Continue = handleExpect conn httpversion expect
       rawPath = if settingsNoParsePath settings then unparsedPath else path
-  (rbody, remainingRef, bodyLength) <-
+  (rbody, bodyLength) <-
     if isChunked te
       then do
         csrc <- mkCSource source
-        pure (readCSource csrc, Nothing, ChunkedBody)
+        pure (readCSource csrc, ChunkedBody)
       else do
         let len = toLength cl
         sourceN <- SourceN.new source len
-        pure (SourceN.read sourceN, Just (SourceN.remaining sourceN), KnownLength (fromIntegral @Int @Word64 len))
+        pure (SourceN.read sourceN, KnownLength (fromIntegral @Int @Word64 len))
   -- body producing function which will produce '100-continue', if needed
   rbody' <- timeoutBody rbody handle100Continue
   let req =
@@ -93,7 +91,7 @@ recvRequest isFirstRequest settings conn addr source = do
             requestHeaderReferer = idxhdr ! fromEnum ReqReferer,
             requestHeaderUserAgent = idxhdr ! fromEnum ReqUserAgent
           }
-  pure (req, remainingRef, idxhdr, rbody)
+  pure (req, idxhdr, rbody)
 
 ----------------------------------------------------------------
 

@@ -18,7 +18,7 @@ import Warpless.Date (GMTDate)
 import Warpless.Header (IndexedHeader, defaultIndexRequestHeader)
 import Warpless.Request (NoKeepAliveRequest (NoKeepAliveRequest), recvRequest)
 import Warpless.Response (sendResponse)
-import Warpless.Settings (Settings (settingsMaximumBodyFlush, settingsOnException, settingsOnExceptionResponse))
+import Warpless.Settings (Settings (settingsOnException, settingsOnExceptionResponse))
 import Warpless.Source (Source, leftoverSource, mkSource, readSource)
 import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), InvalidRequest (BadFirstLine, ConnectionClosedByPeer))
 
@@ -58,9 +58,9 @@ http1server settings getDate conn app addr istatus src =
   where
     loop :: Bool -> IO ()
     loop firstRequest = do
-      (request, maybeRemaining, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn addr src
+      (request, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn addr src
       keepAlive <-
-        processRequest settings getDate conn app istatus src request maybeRemaining idxhdr nextBodyFlush
+        processRequest settings getDate conn app istatus src request idxhdr nextBodyFlush
           `UnliftIO.catchAny` \e -> do
             settingsOnException settings (Just request) e
             -- Don't throw the error again to prevent calling settingsOnException twice.
@@ -85,11 +85,10 @@ processRequest ::
   IORef Bool ->
   Source ->
   Request ->
-  Maybe (IO Int) ->
   IndexedHeader ->
   IO ByteString ->
   IO Bool
-processRequest settings getDate conn app istatus src req maybeRemaining idxhdr nextBodyFlush = do
+processRequest settings getDate conn app istatus src req idxhdr nextBodyFlush = do
   -- In the event that some scarce resource was acquired during
   -- creating the request, we need to make sure that we don't get
   -- an async exception before calling the ResponseSource.
@@ -128,21 +127,9 @@ processRequest settings getDate conn app istatus src req maybeRemaining idxhdr n
   Conc.yield
 
   if keepAlive
-    then -- If there is an unknown or large amount of data to still be read
-    -- from the request body, simple drop this connection instead of
-    -- reading it all in to satisfy a keep-alive request.
-    case settingsMaximumBodyFlush settings of
-      Just maxToRead | maxToRead > 0 -> do
-        case maybeRemaining of
-          Just getRemaining -> do
-            remaining <- getRemaining
-            if remaining <= maxToRead
-              then flushBody nextBodyFlush maxToRead
-              else pure False
-          Nothing -> flushBody nextBodyFlush maxToRead
-      _ -> do
-        flushEntireBody nextBodyFlush
-        pure True
+    then do
+      flushEntireBody nextBodyFlush
+      pure True
     else pure False
 
 sendErrorResponse :: Settings -> IO GMTDate -> Connection -> IORef Bool -> Request -> SomeException -> IO Bool
@@ -158,27 +145,9 @@ sendErrorResponse settings getDate conn istatus req e = do
     errorResponse = settingsOnExceptionResponse settings e
 
 flushEntireBody :: IO ByteString -> IO ()
-flushEntireBody src =
+flushEntireBody source =
   loop
   where
     loop = do
-      bs <- src
-      when (not (ByteString.null bs)) loop
-
-flushBody ::
-  -- get next chunk
-  IO ByteString ->
-  -- maximum to flush
-  Int ->
-  -- True == flushed the entire body, False == we didn't
-  IO Bool
-flushBody src =
-  loop
-  where
-    loop toRead = do
-      bs <- src
-      let toRead' = toRead - ByteString.length bs
-      case (ByteString.null bs, toRead' >= 0) of
-        (True, _) -> pure True
-        (_, True) -> loop toRead'
-        _ -> pure False
+      bytes <- source
+      when (not (ByteString.null bytes)) loop

@@ -1,7 +1,6 @@
 module Warpless.SourceN
   ( new,
     read,
-    remaining,
   )
 where
 
@@ -45,7 +44,3 @@ read (SourceN source remainingRef) = do
           let (bytes1, leftovers) = ByteString.splitAt count bytes
           leftoverSource source leftovers
           pure bytes1
-
-remaining :: SourceN -> IO Int
-remaining (SourceN _ remainingRef) =
-  readIORef remainingRef
