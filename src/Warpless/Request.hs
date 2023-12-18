@@ -1,6 +1,5 @@
 module Warpless.Request
   ( recvRequest,
-    headerLines,
     NoKeepAliveRequest (..),
   )
 where
@@ -20,6 +19,7 @@ import Network.HTTP.Types qualified as Http
 import Network.Socket (SockAddr)
 import Network.Wai
 import Network.Wai.Internal (Request (Request))
+import Warpless.Byte qualified as Byte
 import Warpless.Conduit
 import Warpless.Connection (Connection (..), connSend)
 import Warpless.Header
@@ -53,8 +53,8 @@ recvRequest ::
       IndexedHeader,
       IO ByteString
     )
-recvRequest firstRequest settings conn addr src = do
-  hdrlines <- headerLines firstRequest src
+recvRequest isFirstRequest settings conn addr source = do
+  hdrlines <- readHeaderLines isFirstRequest source
   (method, unparsedPath, query, httpversion, hdr) <- parseHeaderLines hdrlines
   let path = Http.extractPath unparsedPath
       idxhdr = indexRequestHeader hdr
@@ -66,11 +66,11 @@ recvRequest firstRequest settings conn addr src = do
   (rbody, remainingRef, bodyLength) <-
     if isChunked te
       then do
-        csrc <- mkCSource src
+        csrc <- mkCSource source
         pure (readCSource csrc, Nothing, ChunkedBody)
       else do
         let len = toLength cl
-        sourceN <- SourceN.new src len
+        sourceN <- SourceN.new source len
         pure (SourceN.read sourceN, Just (SourceN.remaining sourceN), KnownLength (fromIntegral @Int @Word64 len))
   -- body producing function which will produce '100-continue', if needed
   rbody' <- timeoutBody rbody handle100Continue
@@ -97,18 +97,18 @@ recvRequest firstRequest settings conn addr src = do
 
 ----------------------------------------------------------------
 
-headerLines :: Bool -> Source -> IO [ByteString]
-headerLines firstRequest src = do
-  bs <- readSource src
-  when (ByteString.null bs) do
+readHeaderLines :: Bool -> Source -> IO [ByteString]
+readHeaderLines isFirstRequest source = do
+  bytes <- readSource source
+  when (ByteString.null bytes) do
     -- When we're working on a keep-alive connection and trying to
     -- get the second or later request, we don't want to treat the
     -- lack of data as a real exception. See the http1 function in
     -- the Run module for more details.
-    if firstRequest
+    if isFirstRequest
       then throwIO ConnectionClosedByPeer
       else throwIO NoKeepAliveRequest
-  push src (THStatus 0 0 id id) bs
+  push source (THStatus 0 0 id id) bytes
 
 data NoKeepAliveRequest = NoKeepAliveRequest
   deriving stock (Show)
@@ -165,15 +165,15 @@ data THStatus
 ----------------------------------------------------------------
 
 push :: Source -> THStatus -> ByteString -> IO [ByteString]
-push src (THStatus totalLen chunkLen lines prepend) bs' =
-  case ByteString.elemIndex 10 bs' of
+push source (THStatus totalLen chunkLen lines prepend) bs' =
+  case ByteString.elemIndex Byte.newline bs' of
     -- No newline find in this chunk.  Add it to the prepend,
     -- update the length, and continue processing.
     Nothing -> do
-      bst <- readSource' src
+      bst <- readSource' source
       when (ByteString.null bst) (throwIO IncompleteHeaders)
       push
-        src
+        source
         (THStatus totalLen (chunkLen + ByteString.length bs') lines (ByteString.append bs))
         bst
     Just chunkNL -> do
@@ -199,7 +199,7 @@ push src (THStatus totalLen chunkLen lines prepend) bs' =
           -- So update 'chunkLen' with current chunk up to newline
           -- and use 'chunkLen' later on to add to 'totalLen'.
           push
-            src
+            source
             ( THStatus
                 totalLen
                 (chunkLen + chunkNLlen)
@@ -214,27 +214,28 @@ push src (THStatus totalLen chunkLen lines prepend) bs' =
           if ByteString.null line
             then do
               -- leftover
-              when (start < bsLen) (leftoverSource src (ByteString.Unsafe.unsafeDrop start bs))
+              when (start < bsLen) (leftoverSource source (ByteString.Unsafe.unsafeDrop start bs))
               pure (lines [])
             else do
               -- more headers
               let status = THStatus (totalLen + chunkLen + chunkNLlen) 0 (lines . (line :)) id
               case start < bsLen of
                 -- more bytes in this chunk, push again
-                True -> push src status (ByteString.Unsafe.unsafeDrop start bs)
+                True -> push source status (ByteString.Unsafe.unsafeDrop start bs)
                 -- no more bytes in this chunk, ask for more
                 False -> do
-                  bst <- readSource' src
+                  bst <- readSource' source
                   when (ByteString.null bs) (throwIO IncompleteHeaders)
-                  push src status bst
+                  push source status bst
   where
     -- bs: current header chunk, plus maybe (parts of) next header
     bs = prepend bs'
     bsLen = ByteString.length bs
 
-{-# INLINE checkCR #-}
 checkCR :: ByteString -> Int -> Int
-checkCR bs pos =
-  if pos > 0 && 13 == ByteString.index bs p then p else pos -- 13 is CR (\r)
+checkCR bytes pos
+  | pos > 0 && Byte.cr == ByteString.index bytes p = p
+  | otherwise = pos
   where
     !p = pos - 1
+{-# INLINE checkCR #-}

@@ -8,23 +8,26 @@ module Warpless.Header
   )
 where
 
-import Control.Monad.ST
-import Data.Array
-import Data.Array.ST
-import Data.ByteString qualified as BS
+import Control.Monad (when)
+import Control.Monad.ST (ST)
+import Data.Array (Array, array)
+import Data.Array.ST (MArray (newArray), STArray, runSTArray, writeArray)
+import Data.ByteString qualified as ByteString
 import Data.CaseInsensitive (foldedCase)
-import Network.HTTP.Types
-import Warpless.Types
+import Network.HTTP.Types (Header, HeaderName, RequestHeaders, ResponseHeaders)
+import Warpless.Types (HeaderValue)
 
 ----------------------------------------------------------------
 
 -- | Array for a set of HTTP headers.
-type IndexedHeader = Array Int (Maybe HeaderValue)
+type IndexedHeader =
+  Array Int (Maybe HeaderValue)
 
 ----------------------------------------------------------------
 
 indexRequestHeader :: RequestHeaders -> IndexedHeader
-indexRequestHeader hdr = traverseHeader hdr requestMaxIndex requestKeyIndex
+indexRequestHeader hdr =
+  traverseHeader hdr requestMaxIndex requestKeyIndex
 
 data RequestHeaderIndex
   = ReqContentLength
@@ -59,37 +62,39 @@ data RequestHeaderIndex
 -- - \"If-Match\"
 -- - \"If-None-Match\"
 requestMaxIndex :: Int
-requestMaxIndex = fromEnum (maxBound :: RequestHeaderIndex)
+requestMaxIndex =
+  fromEnum (maxBound @RequestHeaderIndex)
 
 requestKeyIndex :: HeaderName -> Int
-requestKeyIndex hn = case BS.length bs of
-  4 | bs == "host" -> fromEnum ReqHost
-  5 | bs == "range" -> fromEnum ReqRange
-  6 | bs == "expect" -> fromEnum ReqExpect
-  7 | bs == "referer" -> fromEnum ReqReferer
-  8
-    | bs == "if-range" -> fromEnum ReqIfRange
-    | bs == "if-match" -> fromEnum ReqIfMatch
-  10
-    | bs == "user-agent" -> fromEnum ReqUserAgent
-    | bs == "connection" -> fromEnum ReqConnection
-  13 | bs == "if-none-match" -> fromEnum ReqIfNoneMatch
-  14 | bs == "content-length" -> fromEnum ReqContentLength
-  17
-    | bs == "transfer-encoding" -> fromEnum ReqTransferEncoding
-    | bs == "if-modified-since" -> fromEnum ReqIfModifiedSince
-  19 | bs == "if-unmodified-since" -> fromEnum ReqIfUnmodifiedSince
-  _ -> -1
-  where
-    bs = foldedCase hn
+requestKeyIndex (foldedCase -> name) =
+  case ByteString.length name of
+    4 | name == "host" -> fromEnum ReqHost
+    5 | name == "range" -> fromEnum ReqRange
+    6 | name == "expect" -> fromEnum ReqExpect
+    7 | name == "referer" -> fromEnum ReqReferer
+    8
+      | name == "if-range" -> fromEnum ReqIfRange
+      | name == "if-match" -> fromEnum ReqIfMatch
+    10
+      | name == "user-agent" -> fromEnum ReqUserAgent
+      | name == "connection" -> fromEnum ReqConnection
+    13 | name == "if-none-match" -> fromEnum ReqIfNoneMatch
+    14 | name == "content-length" -> fromEnum ReqContentLength
+    17
+      | name == "transfer-encoding" -> fromEnum ReqTransferEncoding
+      | name == "if-modified-since" -> fromEnum ReqIfModifiedSince
+    19 | name == "if-unmodified-since" -> fromEnum ReqIfUnmodifiedSince
+    _ -> -1
 
 defaultIndexRequestHeader :: IndexedHeader
-defaultIndexRequestHeader = array (0, requestMaxIndex) [(i, Nothing) | i <- [0 .. requestMaxIndex]]
+defaultIndexRequestHeader =
+  array (0, requestMaxIndex) [(i, Nothing) | i <- [0 .. requestMaxIndex]]
 
 ----------------------------------------------------------------
 
 indexResponseHeader :: ResponseHeaders -> IndexedHeader
-indexResponseHeader hdr = traverseHeader hdr responseMaxIndex responseKeyIndex
+indexResponseHeader hdr =
+  traverseHeader hdr responseMaxIndex responseKeyIndex
 
 data ResponseHeaderIndex
   = ResContentLength
@@ -100,29 +105,29 @@ data ResponseHeaderIndex
 
 -- | The size for 'IndexedHeader' for HTTP Response.
 responseMaxIndex :: Int
-responseMaxIndex = fromEnum (maxBound :: ResponseHeaderIndex)
+responseMaxIndex = fromEnum (maxBound @ResponseHeaderIndex)
 
 responseKeyIndex :: HeaderName -> Int
-responseKeyIndex hn = case BS.length bs of
-  4 | bs == "date" -> fromEnum ResDate
-  6 | bs == "server" -> fromEnum ResServer
-  13 | bs == "last-modified" -> fromEnum ResLastModified
-  14 | bs == "content-length" -> fromEnum ResContentLength
-  _ -> -1
-  where
-    bs = foldedCase hn
+responseKeyIndex (foldedCase -> name) =
+  case ByteString.length name of
+    4 | name == "date" -> fromEnum ResDate
+    6 | name == "server" -> fromEnum ResServer
+    13 | name == "last-modified" -> fromEnum ResLastModified
+    14 | name == "content-length" -> fromEnum ResContentLength
+    _ -> -1
 
 ----------------------------------------------------------------
 
 traverseHeader :: [Header] -> Int -> (HeaderName -> Int) -> IndexedHeader
-traverseHeader hdr maxidx getIndex = runSTArray $ do
-  arr <- newArray (0, maxidx) Nothing
-  mapM_ (insert arr) hdr
-  return arr
+traverseHeader hdr maxidx getIndex =
+  runSTArray do
+    arr <- newArray (0, maxidx) Nothing
+    mapM_ (insert arr) hdr
+    return arr
   where
     insert :: STArray s Int (Maybe HeaderValue) -> Header -> ST s ()
-    insert arr (key, val)
-      | idx == -1 = return ()
-      | otherwise = writeArray arr idx (Just val)
+    insert arr (key, val) =
+      when (idx == -1) do
+        writeArray arr idx (Just val)
       where
         idx = getIndex key

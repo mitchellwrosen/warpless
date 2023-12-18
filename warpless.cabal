@@ -60,6 +60,7 @@ Library
     Warpless
   other-modules:
     Paths_warpless
+    Warpless.Byte
     Warpless.ByteString
     Warpless.Conduit
     Warpless.Connection

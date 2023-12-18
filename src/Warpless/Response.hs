@@ -31,13 +31,13 @@ import Network.Wai.Internal
 import UnliftIO qualified
 import Warpless.Connection (Connection (..), connSend, connSendFile)
 import Warpless.Date qualified as D
-import Warpless.File
+import Warpless.File (RspFileInfo (..), addContentHeadersForFilePart, conditionalRequest)
 import Warpless.FileInfo (getFileInfo)
 import Warpless.Header
 import Warpless.IO (toBufIOWith)
-import Warpless.ResponseHeader
-import Warpless.Settings
-import Warpless.Types
+import Warpless.ResponseHeader (composeHeader)
+import Warpless.Settings (Settings (..))
+import Warpless.Types (HeaderValue)
 import Warpless.WriteBuffer (toBuilderBuffer)
 
 -- | Sending a HTTP response to 'Connection' according to 'Response'.
@@ -105,8 +105,8 @@ sendResponse ::
   -- | Returing True if the connection is persistent.
   IO Bool
 sendResponse settings conn getDate req reqidxhdr src response = do
-  hs <- addAltSvc settings <$> addServerAndDate hs0
-  if hasBody s
+  headers <- addAltSvc settings <$> addServerAndDate headers0
+  if hasBody status
     then do
       -- The response to HEAD does not have body.
       -- But to handle the conditional requests defined RFC 7232 and
@@ -114,22 +114,26 @@ sendResponse settings conn getDate req reqidxhdr src response = do
       -- and status, the response to HEAD is processed here.
       --
       -- See definition of rsp below for proper body stripping.
-      sendRsp conn ver s hs rspidxhdr maxRspBufSize method rsp
-      pure ret
+      sendRsp conn ver status headers rspidxhdr maxRspBufSize method rsp
+      -- Make sure we don't hang on to 'response' (avoid space leak)
+      pure $! case response of
+        ResponseFile {} -> isPersist
+        ResponseBuilder {} -> isKeepAlive
+        ResponseStream {} -> isKeepAlive
+        ResponseRaw {} -> False
     else do
-      sendRsp conn ver s hs rspidxhdr maxRspBufSize method RspNoBody
+      sendRsp conn ver status headers rspidxhdr maxRspBufSize method RspNoBody
       pure isPersist
   where
-    defServer = settingsServerName settings
     maxRspBufSize = settingsMaxBuilderResponseBufferSize settings
     ver = httpVersion req
-    s = responseStatus response
-    hs0 = sanitizeHeaders $ responseHeaders response
-    rspidxhdr = indexResponseHeader hs0
-    addServerAndDate = addDate getDate rspidxhdr . addServer defServer rspidxhdr
-    (isPersist, isChunked0) = infoFromRequest req reqidxhdr
-    isChunked = not isHead && isChunked0
-    (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr (isPersist, isChunked)
+    status = responseStatus response
+    headers0 = sanitizeHeaders $ responseHeaders response
+    rspidxhdr = indexResponseHeader headers0
+    addServerAndDate = addDate getDate rspidxhdr . addServer (settingsServerName settings) rspidxhdr
+    isPersist = checkPersist req reqidxhdr
+    isChunked = not isHead && httpVersion req == H.http11
+    (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr isPersist isChunked
     method = requestMethod req
     isHead = method == H.methodHead
     rsp =
@@ -142,12 +146,6 @@ sendResponse settings conn getDate req reqidxhdr src response = do
           | isHead -> RspNoBody
           | otherwise -> RspStream fb needsChunked
         ResponseRaw raw _ -> RspRaw raw src
-    -- Make sure we don't hang on to 'response' (avoid space leak)
-    !ret = case response of
-      ResponseFile {} -> isPersist
-      ResponseBuilder {} -> isKeepAlive
-      ResponseStream {} -> isKeepAlive
-      ResponseRaw {} -> False
 
 ----------------------------------------------------------------
 
@@ -304,32 +302,18 @@ sendRspFile404 conn ver hs0 rspidxhdr maxRspBufSize method =
 
 ----------------------------------------------------------------
 
-infoFromRequest ::
-  Request ->
-  IndexedHeader ->
-  ( Bool, -- isPersist
-    Bool -- isChunked
-  )
-infoFromRequest req reqidxhdr = (checkPersist req reqidxhdr, checkChunk req)
-
 checkPersist :: Request -> IndexedHeader -> Bool
 checkPersist req reqidxhdr
-  | ver == H.http11 = checkPersist11 conn
+  | httpVersion req == H.http11 = checkPersist11 conn
   | otherwise = checkPersist10 conn
   where
-    ver = httpVersion req
     conn = reqidxhdr ! fromEnum ReqConnection
     checkPersist11 :: Maybe ByteString -> Bool
-    checkPersist11 (Just x)
-      | CI.foldCase x == "close" = False
+    checkPersist11 (Just x) | CI.foldCase x == "close" = False
     checkPersist11 _ = True
     checkPersist10 :: Maybe ByteString -> Bool
-    checkPersist10 (Just x)
-      | CI.foldCase x == "keep-alive" = True
+    checkPersist10 (Just x) | CI.foldCase x == "keep-alive" = True
     checkPersist10 _ = False
-
-checkChunk :: Request -> Bool
-checkChunk req = httpVersion req == H.http11
 
 ----------------------------------------------------------------
 
@@ -340,8 +324,8 @@ checkChunk req = httpVersion req == H.http11
 --
 -- Content-Length is specified by a reverse proxy.
 -- Note that CGI does not specify Content-Length.
-infoFromResponse :: IndexedHeader -> (Bool, Bool) -> (Bool, Bool)
-infoFromResponse rspidxhdr (isPersist, isChunked) = (isKeepAlive, needsChunked)
+infoFromResponse :: IndexedHeader -> Bool -> Bool -> (Bool, Bool)
+infoFromResponse rspidxhdr isPersist isChunked = (isKeepAlive, needsChunked)
   where
     needsChunked = isChunked && not hasLength
     isKeepAlive = isPersist && (isChunked || hasLength)
@@ -350,24 +334,22 @@ infoFromResponse rspidxhdr (isPersist, isChunked) = (isKeepAlive, needsChunked)
 ----------------------------------------------------------------
 
 hasBody :: H.Status -> Bool
-hasBody s =
-  sc /= 204
-    && sc /= 304
-    && sc >= 200
-  where
-    sc = H.statusCode s
+hasBody (H.statusCode -> code) =
+  code /= 204 && code /= 304 && code >= 200
 
 ----------------------------------------------------------------
 
 addTransferEncoding :: H.ResponseHeaders -> H.ResponseHeaders
-addTransferEncoding hdrs = (H.hTransferEncoding, "chunked") : hdrs
+addTransferEncoding hdrs =
+  (H.hTransferEncoding, "chunked") : hdrs
 
 addDate :: IO D.GMTDate -> IndexedHeader -> H.ResponseHeaders -> IO H.ResponseHeaders
-addDate getDate rspidxhdr hdrs = case rspidxhdr ! fromEnum ResDate of
-  Nothing -> do
-    gmtdate <- getDate
-    return $ (H.hDate, gmtdate) : hdrs
-  Just _ -> return hdrs
+addDate getDate rspidxhdr hdrs =
+  case rspidxhdr ! fromEnum ResDate of
+    Nothing -> do
+      gmtdate <- getDate
+      pure ((H.hDate, gmtdate) : hdrs)
+    Just _ -> pure hdrs
 
 ----------------------------------------------------------------
 

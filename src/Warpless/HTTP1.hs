@@ -94,6 +94,7 @@ processRequest settings getDate conn app istatus src req maybeRemaining idxhdr n
   -- creating the request, we need to make sure that we don't get
   -- an async exception before calling the ResponseSource.
   keepAliveRef <- newIORef $ error "keepAliveRef not filled"
+
   r <-
     UnliftIO.tryAny $
       app req \res -> do
@@ -104,6 +105,7 @@ processRequest settings getDate conn app istatus src req maybeRemaining idxhdr n
         keepAlive <- sendResponse settings conn getDate req idxhdr (readSource src) res
         writeIORef keepAliveRef keepAlive
         return ResponseReceived
+
   case r of
     Right ResponseReceived -> return ()
     Left (e :: SomeException)
@@ -136,12 +138,12 @@ processRequest settings getDate conn app istatus src req maybeRemaining idxhdr n
             remaining <- getRemaining
             if remaining <= maxToRead
               then flushBody nextBodyFlush maxToRead
-              else return False
+              else pure False
           Nothing -> flushBody nextBodyFlush maxToRead
       _ -> do
         flushEntireBody nextBodyFlush
         pure True
-    else return False
+    else pure False
 
 sendErrorResponse :: Settings -> IO GMTDate -> Connection -> IORef Bool -> Request -> SomeException -> IO Bool
 sendErrorResponse settings getDate conn istatus req e = do
