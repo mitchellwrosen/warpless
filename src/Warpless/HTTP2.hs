@@ -14,7 +14,7 @@ import Data.Maybe (fromMaybe)
 import Network.HTTP2.Server qualified as H2
 import Network.Socket (SockAddr)
 import Network.Socket.BufferPool (BufSize, makeRecvN)
-import Network.Wai (Application, responseStatus)
+import Network.Wai (Application)
 import Network.Wai.Internal (ResponseReceived (..))
 import System.TimeManager qualified as TimeManager
 import UnliftIO qualified
@@ -62,36 +62,30 @@ http2server :: S.Settings -> IO GMTDate -> SockAddr -> Application -> H2.Server
 http2server settings getDate addr app h2req0 _aux0 response = do
   req <- toWAIRequest h2req0
   ref <- I.newIORef Nothing
-  eResponseReceived <- UnliftIO.tryAny $
-    app req $ \rsp -> do
-      (h2rsp, st, hasBody) <- fromResponse settings getDate req rsp
-      pps <- if hasBody then fromPushPromises req else return []
-      I.writeIORef ref $ Just (h2rsp, pps, st)
-      _ <- response h2rsp pps
-      return ResponseReceived
+  eResponseReceived <-
+    UnliftIO.tryAny $
+      app req \rsp -> do
+        (h2rsp, hasBody) <- fromResponse settings getDate req rsp
+        pps <- if hasBody then fromPushPromises req else pure []
+        I.writeIORef ref (Just pps)
+        _ <- response h2rsp pps
+        pure ResponseReceived
   case eResponseReceived of
     Right ResponseReceived -> do
-      Just (h2rsp, pps, st) <- I.readIORef ref
-      let msiz = H2.responseBodySize h2rsp
-      logResponse req st (fromIntegral @Int @Integer <$> msiz)
+      Just pps <- I.readIORef ref
       mapM_ (logPushPromise req) pps
     Left e -> do
       S.settingsOnException settings (Just req) e
       let ersp = S.settingsOnExceptionResponse settings e
-          st = responseStatus ersp
-      (h2rsp', _, _) <- fromResponse settings getDate req ersp
-      let msiz = H2.responseBodySize h2rsp'
-      _ <- response h2rsp' []
-      logResponse req st (fromIntegral @Int @Integer <$> msiz)
-  return ()
+      (h2rsp', _) <- fromResponse settings getDate req ersp
+      response h2rsp' []
+  pure ()
   where
     toWAIRequest h2req = toRequest settings addr hdr bdylen bdy
       where
         !hdr = H2.requestHeaders h2req
         !bdy = H2.getRequestBodyChunk h2req
         !bdylen = H2.requestBodySize h2req
-
-    logResponse = S.settingsLogger settings
 
     logPushPromise req pp = logger req path (fromIntegral @Int @Integer siz)
       where

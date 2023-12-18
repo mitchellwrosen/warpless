@@ -10,3 +10,4 @@ Up-to-date with `warp` commit `a2de346e41c0828560b850c1ea1ada849f990025`.
 - No slowloris protection.
 - No file descriptor cache.
 - No file info cache.
+- No response logger.

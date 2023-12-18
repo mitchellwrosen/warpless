@@ -66,8 +66,6 @@ data Settings = Settings
     --
     -- Default: 8192 bytes.
     settingsMaximumBodyFlush :: !(Maybe Int),
-    -- | A log function. Default: no action.
-    settingsLogger :: !(Request -> H.Status -> Maybe Integer -> IO ()),
     -- | A HTTP/2 server push log function. Default: no action.
     settingsServerPushLogger :: !(Request -> ByteString -> Integer -> IO ()),
     -- | Specify the header value of Alternative Services (AltSvc:).
@@ -100,7 +98,6 @@ defaultSettings =
       settingsNoParsePath = False,
       settingsServerName = C8.pack $ "Warpless/" ++ showVersion Paths_warpless.version,
       settingsMaximumBodyFlush = Just 8192,
-      settingsLogger = \_ _ _ -> return (),
       settingsServerPushLogger = \_ _ _ -> return (),
       settingsAltSvc = Nothing,
       settingsMaxBuilderResponseBufferSize = 1049000000

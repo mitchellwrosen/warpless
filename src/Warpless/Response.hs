@@ -113,18 +113,13 @@ sendResponse settings conn getDate req reqidxhdr src response = do
       -- and status, the response to HEAD is processed here.
       --
       -- See definition of rsp below for proper body stripping.
-      (ms, mlen) <- sendRsp conn ver s hs rspidxhdr maxRspBufSize method rsp
-      case ms of
-        Nothing -> pure ()
-        Just realStatus -> logger req realStatus mlen
+      sendRsp conn ver s hs rspidxhdr maxRspBufSize method rsp
       pure ret
     else do
-      _ <- sendRsp conn ver s hs rspidxhdr maxRspBufSize method RspNoBody
-      logger req s Nothing
+      sendRsp conn ver s hs rspidxhdr maxRspBufSize method RspNoBody
       pure isPersist
   where
     defServer = settingsServerName settings
-    logger = settingsLogger settings
     maxRspBufSize = settingsMaxBuilderResponseBufferSize settings
     ver = httpVersion req
     s = responseStatus response
@@ -197,14 +192,13 @@ sendRsp ::
   Int -> -- maxBuilderResponseBufferSize
   H.Method ->
   Rsp ->
-  IO (Maybe H.Status, Maybe Integer)
+  IO ()
 ----------------------------------------------------------------
 
 sendRsp conn ver s hs _ _ _ RspNoBody = do
   -- Not adding Content-Length.
   -- User agents treats it as Content-Length: 0.
   composeHeader ver s hs >>= connSend conn
-  return (Just s, Nothing)
 
 ----------------------------------------------------------------
 
@@ -217,8 +211,7 @@ sendRsp conn ver s hs _ maxRspBufSize _ (RspBuilder body needsChunked) = do
               <> chunkedTransferTerminator
         | otherwise = header <> body
       writeBufferRef = connWriteBuffer conn
-  len <- toBufIOWith maxRspBufSize writeBufferRef (connSend conn) hdrBdy
-  return (Just s, Just (fromIntegral @Int @Integer len))
+  toBufIOWith maxRspBufSize writeBufferRef (connSend conn) hdrBdy
 
 ----------------------------------------------------------------
 
@@ -241,14 +234,12 @@ sendRsp conn ver s hs _ _ _ (RspStream streamingBody needsChunked) = do
   streamingBody sendChunk (sendChunk flush)
   when needsChunked $ send chunkedTransferTerminator
   mbs <- finish
-  maybe (return ()) (connSend conn) mbs
-  return (Just s, Nothing) -- fixme: can we tell the actual sent bytes?
+  maybe (pure ()) (connSend conn) mbs
 
 ----------------------------------------------------------------
 
 sendRsp conn _ _ _ _ _ _ (RspRaw withApp src) = do
   withApp src (connSend conn)
-  return (Nothing, Nothing)
 
 ----------------------------------------------------------------
 
@@ -288,13 +279,12 @@ sendRspFile2XX ::
   Integer ->
   Integer ->
   Bool ->
-  IO (Maybe H.Status, Maybe Integer)
+  IO ()
 sendRspFile2XX conn ver s hs rspidxhdr maxRspBufSize method path beg len isHead
   | isHead = sendRsp conn ver s hs rspidxhdr maxRspBufSize method RspNoBody
   | otherwise = do
       lheader <- composeHeader ver s hs
       connSendFile conn path beg len (pure ()) [lheader]
-      return (Just s, Just len)
 
 sendRspFile404 ::
   Connection ->
@@ -303,7 +293,7 @@ sendRspFile404 ::
   IndexedHeader ->
   Int ->
   H.Method ->
-  IO (Maybe H.Status, Maybe Integer)
+  IO ()
 sendRspFile404 conn ver hs0 rspidxhdr maxRspBufSize method =
   sendRsp conn ver s hs rspidxhdr maxRspBufSize method (RspBuilder body True)
   where
