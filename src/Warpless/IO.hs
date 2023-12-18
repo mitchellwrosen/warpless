@@ -13,20 +13,21 @@ import Data.IORef (IORef, readIORef, writeIORef)
 import Foreign.ForeignPtr (newForeignPtr_)
 import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
 
-toBufIOWith :: Int -> IORef WriteBuffer -> (ByteString -> IO ()) -> Builder -> IO ()
+toBufIOWith :: Int -> IORef WriteBuffer -> (ByteString -> IO ()) -> Builder -> IO Int
 toBufIOWith maxRspBufSize writeBufferRef io builder = do
   writeBuffer <- readIORef writeBufferRef
-  loop writeBuffer (runBuilder builder)
+  loop writeBuffer (runBuilder builder) 0
   where
-    loop :: WriteBuffer -> BufferWriter -> IO ()
-    loop writeBuffer writer = do
+    loop :: WriteBuffer -> BufferWriter -> Int -> IO Int
+    loop writeBuffer writer bytesSent = do
       let buf = bufBuffer writeBuffer
           size = bufSize writeBuffer
       (len, signal) <- writer buf size
       fptr <- newForeignPtr_ buf
       io (PS fptr 0 len)
+      let totalBytesSent = len + bytesSent
       case signal of
-        Done -> pure ()
+        Done -> pure totalBytesSent
         More minSize next
           | size < minSize -> do
               when (minSize > maxRspBufSize) $
@@ -48,8 +49,8 @@ toBufIOWith maxRspBufSize writeBufferRef io builder = do
                   biggerWriteBuffer <- createWriteBuffer minSize
                   writeIORef writeBufferRef biggerWriteBuffer
                   return biggerWriteBuffer
-              loop biggerWriteBuffer next
-          | otherwise -> loop writeBuffer next
+              loop biggerWriteBuffer next totalBytesSent
+          | otherwise -> loop writeBuffer next totalBytesSent
         Chunk bs next -> do
           io bs
-          loop writeBuffer next
+          loop writeBuffer next totalBytesSent
