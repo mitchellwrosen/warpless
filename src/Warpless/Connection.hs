@@ -83,7 +83,7 @@ connSendFile :: Connection -> FilePath -> Integer -> Integer -> IO () -> [ByteSt
 connSendFile Connection {connSock} path off len =
   sendfileWithHeader connSock path (PartOfFile off len)
 
--- | The connection receiving function. This returns "" for EOF or exceptions.
+-- | The connection receiving function. This returns "" for EOF.
 connRecv :: Connection -> IO ByteString
 connRecv Connection {connSock, bufferPool} =
   Recv.receive connSock bufferPool `catch` \(ex :: IOError) ->

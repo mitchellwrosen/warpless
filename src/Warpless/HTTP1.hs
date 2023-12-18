@@ -20,7 +20,7 @@ import Warpless.Request (NoKeepAliveRequest (NoKeepAliveRequest), recvRequest)
 import Warpless.Response (sendResponse)
 import Warpless.Settings (Settings (settingsOnException, settingsOnExceptionResponse))
 import Warpless.Source (Source, leftoverSource, mkSource, readSource)
-import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), InvalidRequest (BadFirstLine, ConnectionClosedByPeer))
+import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), InvalidRequest)
 
 http1 :: Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> ByteString -> IO ()
 http1 settings getDate conn app addr bs0 = do
@@ -50,8 +50,7 @@ http1server settings getDate conn app addr istatus src =
       Just NoKeepAliveRequest -> pure ()
       Nothing ->
         case fromException @InvalidRequest exception of
-          -- No valid request
-          Just (BadFirstLine _) -> pure ()
+          Just _ -> pure ()
           _ -> do
             _ <- sendErrorResponse settings getDate conn istatus defaultRequest {remoteHost = addr} exception
             throwIO exception
@@ -133,16 +132,16 @@ processRequest settings getDate conn app istatus src req idxhdr nextBodyFlush = 
     else pure False
 
 sendErrorResponse :: Settings -> IO GMTDate -> Connection -> IORef Bool -> Request -> SomeException -> IO Bool
-sendErrorResponse settings getDate conn istatus req e = do
+sendErrorResponse settings getDate conn istatus req exception = do
   status <- readIORef istatus
-  if shouldSendErrorResponse e && status
+  if shouldSendErrorResponse && status
     then sendResponse settings conn getDate req defaultIndexRequestHeader (return ByteString.empty) errorResponse
     else return False
   where
-    shouldSendErrorResponse se
-      | Just ConnectionClosedByPeer <- fromException se = False
+    shouldSendErrorResponse
+      | Just _ <- fromException @InvalidRequest exception = False
       | otherwise = True
-    errorResponse = settingsOnExceptionResponse settings e
+    errorResponse = settingsOnExceptionResponse settings exception
 
 flushEntireBody :: IO ByteString -> IO ()
 flushEntireBody source =

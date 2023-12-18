@@ -24,19 +24,13 @@ type HeaderValue = ByteString
 
 -- | Error types for bad 'Request'.
 data InvalidRequest
-  = NotEnoughLines ![String]
-  | BadFirstLine !String
-  | NonHttp
-  | IncompleteHeaders
+  = MalformedRequest
   | ConnectionClosedByPeer
   deriving stock (Eq)
   deriving anyclass (Exception)
 
 instance Show InvalidRequest where
-  show (NotEnoughLines xs) = "Warp: Incomplete request headers, received: " ++ show xs
-  show (BadFirstLine s) = "Warp: Invalid first line of request: " ++ show s
-  show NonHttp = "Warp: Request line specified a non-HTTP request"
-  show IncompleteHeaders = "Warp: Request headers did not finish transmission"
+  show MalformedRequest = "Warp: Malformed request"
   show ConnectionClosedByPeer = "Warp: Client closed connection prematurely"
 
 ----------------------------------------------------------------

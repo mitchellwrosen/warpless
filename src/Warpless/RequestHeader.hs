@@ -6,7 +6,6 @@ where
 import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
-import Data.ByteString.Char8 qualified as ByteString.Char8 (unpack)
 import Data.ByteString.Internal (ByteString (..), memchr)
 import Data.CaseInsensitive qualified as CI
 import Data.Word (Word8)
@@ -16,7 +15,7 @@ import Foreign.Ptr (Ptr, minusPtr, nullPtr, plusPtr)
 import Foreign.Storable (peek)
 import Network.HTTP.Types qualified as Http
 import UnliftIO (throwIO)
-import Warpless.Types (InvalidRequest (BadFirstLine, NonHttp, NotEnoughLines))
+import Warpless.Types (InvalidRequest (MalformedRequest))
 
 parseHeaderLines ::
   [ByteString] ->
@@ -28,7 +27,7 @@ parseHeaderLines ::
       Http.RequestHeaders
     )
 parseHeaderLines = \case
-  [] -> throwIO (NotEnoughLines [])
+  [] -> throwIO MalformedRequest
   firstLine : otherLines -> do
     (method, path', query, httpversion) <- parseRequestLine firstLine
     pure (method, path', query, httpversion, map parseHeader otherLines)
@@ -55,22 +54,22 @@ parseRequestLine ::
       ByteString, -- Query
       Http.HttpVersion
     )
-parseRequestLine requestLine@(PS fptr off len) =
+parseRequestLine (PS fptr off len) =
   withForeignPtr fptr \ptr -> do
-    when (len < 14) (throwIO baderr)
+    when (len < 14) (throwIO MalformedRequest)
 
     let methodptr = ptr `plusPtr` off :: Ptr Word8
         limptr = methodptr `plusPtr` len :: Ptr Word8
 
     pathptr0 <- memchr methodptr 32 (fromIntegral @Int @CSize len) -- ' '
-    when (pathptr0 == nullPtr || (limptr `minusPtr` pathptr0) < 11) $
-      throwIO baderr
+    when (pathptr0 == nullPtr || (limptr `minusPtr` pathptr0) < 11) do
+      throwIO MalformedRequest
     let pathptr = pathptr0 `plusPtr` 1 :: Ptr Word8
         lim1 = limptr `minusPtr` pathptr0
 
     httpptr0 <- memchr pathptr 32 (fromIntegral @Int @CSize lim1) -- ' '
-    when (httpptr0 == nullPtr || (limptr `minusPtr` httpptr0) < 9) $
-      throwIO baderr
+    when (httpptr0 == nullPtr || (limptr `minusPtr` httpptr0) < 9) do
+      throwIO MalformedRequest
     let httpptr = httpptr0 `plusPtr` 1 :: Ptr Word8
         lim2 = httpptr0 `minusPtr` pathptr
 
@@ -87,14 +86,10 @@ parseRequestLine requestLine@(PS fptr off len) =
 
     pure (method, path, query, hv)
   where
-    baderr :: InvalidRequest
-    baderr =
-      BadFirstLine (ByteString.Char8.unpack requestLine)
-
     check :: Ptr Word8 -> Int -> Word8 -> IO ()
     check p n w = do
       w0 <- peek $ p `plusPtr` n
-      when (w0 /= w) $ throwIO NonHttp
+      when (w0 /= w) (throwIO MalformedRequest)
 
     checkHTTP :: Ptr Word8 -> IO ()
     checkHTTP httpptr = do

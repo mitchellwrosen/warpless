@@ -57,17 +57,17 @@ recvRequest isFirstRequest settings conn addr source = do
   let path = Http.extractPath unparsedPath
       idxhdr = indexRequestHeader hdr
       expect = idxhdr ! fromEnum ReqExpect
-      cl = idxhdr ! fromEnum ReqContentLength
-      te = idxhdr ! fromEnum ReqTransferEncoding
+      contentLength = idxhdr ! fromEnum ReqContentLength
+      transferEncoding = idxhdr ! fromEnum ReqTransferEncoding
       handle100Continue = handleExpect conn httpversion expect
       rawPath = if settingsNoParsePath settings then unparsedPath else path
   (rbody, bodyLength) <-
-    if isChunked te
+    if isChunked transferEncoding
       then do
         csrc <- mkCSource source
         pure (readCSource csrc, ChunkedBody)
       else do
-        let len = toLength cl
+        let len = toLength contentLength
         sourceN <- SourceN.new source len
         pure (SourceN.read sourceN, KnownLength (fromIntegral @Int @Word64 len))
   -- body producing function which will produce '100-continue', if needed
@@ -169,7 +169,7 @@ push source (THStatus totalLen chunkLen lines prepend) bs' =
     -- update the length, and continue processing.
     Nothing -> do
       bst <- readSource' source
-      when (ByteString.null bst) (throwIO IncompleteHeaders)
+      when (ByteString.null bst) (throwIO MalformedRequest)
       push
         source
         (THStatus totalLen (chunkLen + ByteString.length bs') lines (ByteString.append bs))
@@ -223,7 +223,7 @@ push source (THStatus totalLen chunkLen lines prepend) bs' =
                 -- no more bytes in this chunk, ask for more
                 False -> do
                   bst <- readSource' source
-                  when (ByteString.null bs) (throwIO IncompleteHeaders)
+                  when (ByteString.null bs) (throwIO MalformedRequest)
                   push source status bst
   where
     -- bs: current header chunk, plus maybe (parts of) next header
