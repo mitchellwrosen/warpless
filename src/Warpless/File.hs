@@ -16,7 +16,7 @@ import Network.HTTP.Types qualified as H
 import Network.HTTP.Types.Header qualified as H
 import Network.Wai
 import Numeric (showInt)
-import Warpless.FileInfoCache qualified as I
+import Warpless.FileInfo (FileInfo (..))
 import Warpless.Header
 import Warpless.PackInt
 
@@ -30,7 +30,7 @@ data RspFileInfo
 ----------------------------------------------------------------
 
 conditionalRequest ::
-  I.FileInfo ->
+  FileInfo ->
   H.ResponseHeaders ->
   -- | Response
   IndexedHeader ->
@@ -45,9 +45,9 @@ conditionalRequest finfo hs0 rspidx reqidx = case condition of
         !hs = [(H.hLastModified, date) | not hasLM] ++ hs1
      in WithBody s hs off len
   where
-    !mtime = I.fileInfoTime finfo
-    !size = I.fileInfoSize finfo
-    !date = I.fileInfoDate finfo
+    !mtime = fileInfoTime finfo
+    !size = fileInfoSize finfo
+    !date = fileInfoDate finfo
     !mcondition =
       ifmodified reqidx size mtime
         <|> ifunmodified reqidx size mtime
@@ -128,22 +128,22 @@ contentRangeHeader beg end total = (H.hContentRange, range)
       C8.pack
       -- building with ShowS
       $
-        'b' :
-        'y' :
-        't' :
-        'e' :
-        's' :
-        ' ' :
-        ( if beg > end
-            then ('*' :)
-            else
-              showInt beg
-                . ('-' :)
-                . showInt end
-        )
-          ( '/' :
-            showInt total ""
-          )
+        'b'
+          : 'y'
+          : 't'
+          : 'e'
+          : 's'
+          : ' '
+          : ( if beg > end
+                then ('*' :)
+                else
+                  showInt beg
+                    . ('-' :)
+                    . showInt end
+            )
+            ( '/'
+                : showInt total ""
+            )
 
 addContentHeaders :: H.ResponseHeaders -> Integer -> Integer -> Integer -> H.ResponseHeaders
 addContentHeaders hs off len size

@@ -32,8 +32,6 @@ Library
     bsb-http-chunked ^>= 0.0,
     bytestring ^>= 0.10 || ^>= 0.11,
     case-insensitive ^>= 1.2,
-    containers,
-    hashable,
     http-date,
     http-types >= 0.12,
     http2 >= 3.0      && < 5,
@@ -68,8 +66,7 @@ Library
     Warpless.Date
     Warpless.Exception
     Warpless.File
-    Warpless.FileInfoCache
-    Warpless.HashMap
+    Warpless.FileInfo
     Warpless.HTTP1
     Warpless.HTTP2
     Warpless.HTTP2.File

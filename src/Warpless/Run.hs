@@ -13,13 +13,12 @@ import Network.Socket qualified as Network
 import Network.Wai (Application)
 import UnliftIO qualified
 import Warpless.Connection (cleanupConnection, connRecv, socketConnection)
+import Warpless.Date (GMTDate)
 import Warpless.Date qualified as DateCache
 import Warpless.Exception (ignoringExceptions)
-import Warpless.FileInfoCache qualified as FileInfoCache
 import Warpless.HTTP1 (http1)
 import Warpless.HTTP2 (http2)
-import Warpless.Settings (Settings (settingsFileInfoCacheDuration, settingsHost, settingsPort))
-import Warpless.Types (InternalInfo (InternalInfo))
+import Warpless.Settings (Settings (settingsHost, settingsPort))
 
 -- | Run an 'Application' with the given 'Settings'.
 -- This opens a listen socket on the port defined in 'Settings' and
@@ -28,19 +27,17 @@ run :: Settings -> Application -> IO ()
 run settings app =
   UnliftIO.bracket (bindPortTCP (settingsPort settings) (settingsHost settings)) Network.close \serverSocket -> do
     dateCache <- DateCache.initialize
-    FileInfoCache.withFileInfoCache fdFileInfoDurationInSeconds \fic -> do
-      Ki.scoped \scope -> do
-        mask_ do
-          forever do
-            (clientSocket, addr) <- Network.accept serverSocket
-            _ :: Ki.Thread () <-
-              Ki.forkWith scope Ki.defaultThreadOptions {Ki.maskingState = MaskedUninterruptible} do
-                handleClient settings app (InternalInfo dateCache fic) clientSocket addr
-            pure ()
+    Ki.scoped \scope -> do
+      mask_ do
+        forever do
+          (clientSocket, addr) <- Network.accept serverSocket
+          _ :: Ki.Thread () <-
+            Ki.forkWith scope Ki.defaultThreadOptions {Ki.maskingState = MaskedUninterruptible} do
+              handleClient settings app dateCache clientSocket addr
+          pure ()
   where
-    !fdFileInfoDurationInSeconds = settingsFileInfoCacheDuration settings * 1_000_000
 
-handleClient :: Settings -> Application -> InternalInfo -> Network.Socket -> Network.SockAddr -> IO ()
+handleClient :: Settings -> Application -> IO GMTDate -> Network.Socket -> Network.SockAddr -> IO ()
 handleClient settings app ii clientSocket addr = do
   -- NoDelay causes an error for AF_UNIX.
   ignoringExceptions (Network.setSocketOption clientSocket Network.NoDelay 1)

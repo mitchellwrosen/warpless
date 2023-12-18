@@ -21,26 +21,23 @@ import Network.Wai
 import Network.Wai.Internal (Request (..))
 import System.IO.Unsafe (unsafePerformIO)
 import Warpless.HTTP2.Types
-import Warpless.Request (getFileInfoKey)
 import Warpless.Settings qualified as S (Settings, settingsNoParsePath)
-import Warpless.Types
 
 type ToReq = (TokenHeaderList, ValueTable) -> Maybe Int -> IO ByteString -> IO Request
 
 ----------------------------------------------------------------
 
-toRequest :: InternalInfo -> S.Settings -> SockAddr -> ToReq
-toRequest ii settings addr ht bodylen body = do
+toRequest :: S.Settings -> SockAddr -> ToReq
+toRequest settings addr ht bodylen body = do
   ref <- newIORef Nothing
-  toRequest' ii settings addr ref ht bodylen body
+  toRequest' settings addr ref ht bodylen body
 
 toRequest' ::
-  InternalInfo ->
   S.Settings ->
   SockAddr ->
   IORef (Maybe HTTP2Data) ->
   ToReq
-toRequest' ii settings addr ref (reqths, reqvt) bodylen body = return req
+toRequest' settings addr ref (reqths, reqvt) bodylen body = return req
   where
     !req =
       Request
@@ -82,11 +79,10 @@ toRequest' ii settings addr ref (reqths, reqvt) bodylen body = return req
     !rawPath = if S.settingsNoParsePath settings then unparsedPath else path
     -- fixme: pauseTimeout. th is not available here.
     !vaultValue =
-      Vault.insert getFileInfoKey (getFileInfo ii) $
-        Vault.insert getHTTP2DataKey (readIORef ref) $
-          Vault.insert setHTTP2DataKey (writeIORef ref) $
-            Vault.insert modifyHTTP2DataKey (modifyIORef' ref) $
-              Vault.empty
+      Vault.insert getHTTP2DataKey (readIORef ref) $
+        Vault.insert setHTTP2DataKey (writeIORef ref) $
+          Vault.insert modifyHTTP2DataKey (modifyIORef' ref) $
+            Vault.empty
 
 getHTTP2DataKey :: Vault.Key (IO (Maybe HTTP2Data))
 getHTTP2DataKey = unsafePerformIO Vault.newKey

@@ -1,7 +1,6 @@
 module Warpless.Request
   ( recvRequest,
     headerLines,
-    getFileInfoKey,
     NoKeepAliveRequest (..),
   )
 where
@@ -21,10 +20,8 @@ import Network.HTTP.Types qualified as Http
 import Network.Socket (SockAddr)
 import Network.Wai
 import Network.Wai.Internal (Request (Request))
-import System.IO.Unsafe (unsafePerformIO)
 import Warpless.Conduit
 import Warpless.Connection (Connection (..), connSend)
-import Warpless.FileInfoCache (FileInfo)
 import Warpless.Header
 import Warpless.ReadInt
 import Warpless.RequestHeader (parseHeaderLines)
@@ -41,7 +38,6 @@ recvRequest ::
   Bool ->
   Settings ->
   Connection ->
-  (FilePath -> IO FileInfo) ->
   -- | Peer's address.
   SockAddr ->
   -- | Where HTTP request comes from.
@@ -57,7 +53,7 @@ recvRequest ::
       IndexedHeader,
       IO ByteString
     )
-recvRequest firstRequest settings conn getFileInfo addr src = do
+recvRequest firstRequest settings conn addr src = do
   hdrlines <- headerLines firstRequest src
   (method, unparsedPath, path, query, httpversion, hdr) <- parseHeaderLines hdrlines
   let idxhdr = indexRequestHeader hdr
@@ -66,7 +62,6 @@ recvRequest firstRequest settings conn getFileInfo addr src = do
       te = idxhdr ! fromEnum ReqTransferEncoding
       handle100Continue = handleExpect conn httpversion expect
       rawPath = if settingsNoParsePath settings then unparsedPath else path
-      vaultValue = Vault.insert getFileInfoKey getFileInfo Vault.empty
   (rbody, remainingRef, bodyLength) <-
     if isChunked te
       then do
@@ -90,7 +85,7 @@ recvRequest firstRequest settings conn getFileInfo addr src = do
             isSecure = False,
             remoteHost = addr,
             requestBody = rbody',
-            vault = vaultValue,
+            vault = Vault.empty,
             requestBodyLength = bodyLength,
             requestHeaderHost = idxhdr ! fromEnum ReqHost,
             requestHeaderRange = idxhdr ! fromEnum ReqRange,
@@ -242,7 +237,3 @@ checkCR bs pos =
   if pos > 0 && 13 == ByteString.index bs p then p else pos -- 13 is CR (\r)
   where
     !p = pos - 1
-
-getFileInfoKey :: Vault.Key (FilePath -> IO FileInfo)
-getFileInfoKey = unsafePerformIO Vault.newKey
-{-# NOINLINE getFileInfoKey #-}

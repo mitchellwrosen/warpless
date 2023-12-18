@@ -5,8 +5,8 @@ module Warpless.Date
 where
 
 import Control.AutoUpdate (defaultUpdateSettings, mkAutoUpdate, updateAction)
-import Data.ByteString
-import Network.HTTP.Date
+import Data.ByteString (ByteString)
+import Network.HTTP.Date (HTTPDate, epochTimeToHTTPDate, formatHTTPDate)
 import System.Posix (epochTime)
 
 -- | The type of the Date header value.

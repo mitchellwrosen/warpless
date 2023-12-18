@@ -3,15 +3,12 @@ module Warpless.Types
     HeaderValue,
     InvalidRequest (..),
     ExceptionInsideResponseBody (..),
-    InternalInfo (..),
   )
 where
 
 import Control.Exception (Exception)
 import Data.ByteString (ByteString)
 import UnliftIO qualified
-import Warpless.Date qualified as D
-import Warpless.FileInfoCache qualified as I
 
 ----------------------------------------------------------------
 
@@ -53,10 +50,3 @@ instance Show InvalidRequest where
 newtype ExceptionInsideResponseBody = ExceptionInsideResponseBody UnliftIO.SomeException
   deriving stock (Show)
   deriving anyclass (Exception)
-
-----------------------------------------------------------------
-
-data InternalInfo = InternalInfo
-  { getDate :: !(IO D.GMTDate),
-    getFileInfo :: !(FilePath -> IO I.FileInfo)
-  }

@@ -1,6 +1,3 @@
-{-# LANGUAGE MagicHash #-}
-{-# LANGUAGE UnboxedTuples #-}
-
 module Warpless.Settings
   ( Settings (..),
     defaultSettings,
@@ -47,18 +44,6 @@ data Settings = Settings
     --
     -- Since 2.0.3
     settingsOnExceptionResponse :: !(SomeException -> Response),
-    -- | Cache duration time of file information in seconds. 0 means that the cache mechanism is not used.
-    --
-    -- The file information cache is an optimization that is useful for servers dealing with
-    -- static files. However, if files are being modified, it can cause incorrect
-    -- results in some cases. Therefore, we disable it by default. If you know that
-    -- your files will be static or you prefer performance to file consistency,
-    -- it's recommended to turn this on; a reasonable value for those cases is 10.
-    -- Enabling this cache results in drastic performance improvement for file
-    -- transfers.
-    --
-    -- Default value: 0
-    settingsFileInfoCacheDuration :: !Int,
     -- | Perform no parsing on the rawPathInfo.
     --
     -- This is useful for writing HTTP proxies.
@@ -112,7 +97,6 @@ defaultSettings =
       settingsHost = "*4",
       settingsOnException = defaultOnException,
       settingsOnExceptionResponse = defaultOnExceptionResponse,
-      settingsFileInfoCacheDuration = 0,
       settingsNoParsePath = False,
       settingsServerName = C8.pack $ "Warpless/" ++ showVersion Paths_warpless.version,
       settingsMaximumBodyFlush = Just 8192,

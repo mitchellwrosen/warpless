@@ -10,6 +10,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
 import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.IORef qualified as I
+import Data.Maybe (fromMaybe)
 import Network.HTTP2.Server qualified as H2
 import Network.Socket (SockAddr)
 import Network.Socket.BufferPool (BufSize, makeRecvN)
@@ -18,16 +19,16 @@ import Network.Wai.Internal (ResponseReceived (..))
 import System.TimeManager qualified as TimeManager
 import UnliftIO qualified
 import Warpless.Connection (Connection (..), connRecv, connSend, setConnHTTP2)
+import Warpless.Date (GMTDate)
 import Warpless.HTTP2.File (pReadMaker)
 import Warpless.HTTP2.PushPromise (fromPushPromises)
 import Warpless.HTTP2.Request (toRequest)
 import Warpless.HTTP2.Response (fromResponse)
 import Warpless.Settings qualified as S
-import Warpless.Types (InternalInfo)
 import Warpless.WriteBuffer (WriteBuffer (..))
 
-http2 :: S.Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
-http2 settings ii conn app peerAddr bs = do
+http2 :: S.Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> ByteString -> IO ()
+http2 settings getDate conn app peerAddr bs = do
   istatus <- newIORef False
   rawRecvN <- makeRecvN bs (connRecv conn)
   writeBuffer <- readIORef (connWriteBuffer conn)
@@ -52,19 +53,19 @@ http2 settings ii conn app peerAddr bs = do
               confPeerSockAddr = peerAddr
             }
     setConnHTTP2 conn
-    H2.run conf $ http2server settings ii peerAddr app
+    H2.run conf $ http2server settings getDate peerAddr app
 
 -- | Converting WAI application to the server type of http2 library.
 --
 -- Since 3.3.11
-http2server :: S.Settings -> InternalInfo -> SockAddr -> Application -> H2.Server
-http2server settings ii addr app h2req0 _aux0 response = do
+http2server :: S.Settings -> IO GMTDate -> SockAddr -> Application -> H2.Server
+http2server settings getDate addr app h2req0 _aux0 response = do
   req <- toWAIRequest h2req0
   ref <- I.newIORef Nothing
   eResponseReceived <- UnliftIO.tryAny $
     app req $ \rsp -> do
-      (h2rsp, st, hasBody) <- fromResponse settings ii req rsp
-      pps <- if hasBody then fromPushPromises ii req else return []
+      (h2rsp, st, hasBody) <- fromResponse settings getDate req rsp
+      pps <- if hasBody then fromPushPromises req else return []
       I.writeIORef ref $ Just (h2rsp, pps, st)
       _ <- response h2rsp pps
       return ResponseReceived
@@ -78,13 +79,13 @@ http2server settings ii addr app h2req0 _aux0 response = do
       S.settingsOnException settings (Just req) e
       let ersp = S.settingsOnExceptionResponse settings e
           st = responseStatus ersp
-      (h2rsp', _, _) <- fromResponse settings ii req ersp
+      (h2rsp', _, _) <- fromResponse settings getDate req ersp
       let msiz = H2.responseBodySize h2rsp'
       _ <- response h2rsp' []
       logResponse req st (fromIntegral @Int @Integer <$> msiz)
   return ()
   where
-    toWAIRequest h2req = toRequest ii settings addr hdr bdylen bdy
+    toWAIRequest h2req = toRequest settings addr hdr bdylen bdy
       where
         !hdr = H2.requestHeaders h2req
         !bdy = H2.getRequestBodyChunk h2req
@@ -96,9 +97,7 @@ http2server settings ii addr app h2req0 _aux0 response = do
       where
         !logger = S.settingsServerPushLogger settings
         !path = H2.promiseRequestPath pp
-        !siz = case H2.responseBodySize $ H2.promiseResponse pp of
-          Nothing -> 0
-          Just s -> s
+        !siz = fromMaybe 0 (H2.responseBodySize (H2.promiseResponse pp))
 
 wrappedRecvN :: IORef Bool -> (BufSize -> IO ByteString) -> (BufSize -> IO ByteString)
 wrappedRecvN istatus readN bufsize = do

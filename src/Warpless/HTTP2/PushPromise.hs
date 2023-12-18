@@ -8,22 +8,21 @@ import Network.HTTP.Types qualified as H
 import Network.HTTP2.Server qualified as H2
 import Network.Wai
 import UnliftIO qualified
-import Warpless.FileInfoCache
+import Warpless.FileInfo (FileInfo (..), getFileInfo)
 import Warpless.HTTP2.Request (getHTTP2Data)
 import Warpless.HTTP2.Types
-import Warpless.Types
 
-fromPushPromises :: InternalInfo -> Request -> IO [H2.PushPromise]
-fromPushPromises ii req = do
+fromPushPromises :: Request -> IO [H2.PushPromise]
+fromPushPromises req = do
   mh2data <- getHTTP2Data req
   let pp = case mh2data of
         Nothing -> []
         Just h2data -> http2dataPushPromise h2data
-  catMaybes <$> mapM (fromPushPromise ii) pp
+  catMaybes <$> mapM fromPushPromise pp
 
-fromPushPromise :: InternalInfo -> PushPromise -> IO (Maybe H2.PushPromise)
-fromPushPromise ii (PushPromise path file rsphdr w) = do
-  efinfo <- UnliftIO.tryIO $ getFileInfo ii file
+fromPushPromise :: PushPromise -> IO (Maybe H2.PushPromise)
+fromPushPromise (PushPromise path file rsphdr w) = do
+  efinfo <- UnliftIO.tryIO $ getFileInfo file
   case efinfo of
     Left (_ex :: UnliftIO.IOException) -> return Nothing
     Right finfo -> do

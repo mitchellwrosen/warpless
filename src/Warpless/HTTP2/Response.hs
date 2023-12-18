@@ -11,23 +11,24 @@ import Network.HTTP2.Server qualified as H2
 import Network.Wai hiding (responseBuilder, responseFile, responseStream)
 import Network.Wai.Internal (Response (..))
 import UnliftIO qualified
+import Warpless.Date (GMTDate)
 import Warpless.File
+import Warpless.FileInfo (getFileInfo)
 import Warpless.HTTP2.Request (getHTTP2Data)
 import Warpless.HTTP2.Types
 import Warpless.Header
 import Warpless.Response qualified as R
 import Warpless.Settings qualified as S
-import Warpless.Types
 
 ----------------------------------------------------------------
 
-fromResponse :: S.Settings -> InternalInfo -> Request -> Response -> IO (H2.Response, H.Status, Bool)
-fromResponse settings ii req rsp = do
-  date <- getDate ii
+fromResponse :: S.Settings -> IO GMTDate -> Request -> Response -> IO (H2.Response, H.Status, Bool)
+fromResponse settings getDate req rsp = do
+  date <- getDate
   rspst@(h2rsp, st, hasBody) <- case rsp of
     ResponseFile st rsphdr path mpart -> do
       let rsphdr' = add date rsphdr
-      responseFile st rsphdr' isHead path mpart ii reqhdr
+      responseFile st rsphdr' isHead path mpart reqhdr
     ResponseBuilder st rsphdr builder -> do
       let rsphdr' = add date rsphdr
       return $ responseBuilder st rsphdr' isHead builder
@@ -60,19 +61,17 @@ responseFile ::
   Bool ->
   FilePath ->
   Maybe FilePart ->
-  InternalInfo ->
   H.RequestHeaders ->
   IO (H2.Response, H.Status, Bool)
-responseFile st rsphdr _ _ _ _ _
-  | noBody st = return $ responseNoBody st rsphdr
-responseFile st rsphdr isHead path (Just fp) _ _ =
+responseFile st rsphdr _ _ _ _ | noBody st = pure (responseNoBody st rsphdr)
+responseFile st rsphdr isHead path (Just fp) _ =
   return $ responseFile2XX st rsphdr isHead fileSpec
   where
     !off' = filePartOffset fp
     !bytes' = filePartByteCount fp
     !fileSpec = H2.FileSpec path (fromIntegral @Integer @Int64 off') (fromIntegral @Integer @Int64 bytes')
-responseFile _ rsphdr isHead path Nothing ii reqhdr = do
-  efinfo <- UnliftIO.tryIO $ getFileInfo ii path
+responseFile _ rsphdr isHead path Nothing reqhdr = do
+  efinfo <- UnliftIO.tryIO $ getFileInfo path
   case efinfo of
     Left (_ex :: UnliftIO.IOException) -> return $ response404 rsphdr
     Right finfo -> do

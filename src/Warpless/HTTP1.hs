@@ -14,15 +14,16 @@ import Network.Wai (Application, Request (remoteHost), defaultRequest)
 import Network.Wai.Internal (ResponseReceived (ResponseReceived))
 import UnliftIO qualified
 import Warpless.Connection (Connection (..), connRecv)
+import Warpless.Date (GMTDate)
 import Warpless.Header (IndexedHeader, defaultIndexRequestHeader)
 import Warpless.Request (NoKeepAliveRequest (NoKeepAliveRequest), recvRequest)
 import Warpless.Response (sendResponse)
 import Warpless.Settings (Settings (settingsMaximumBodyFlush, settingsOnException, settingsOnExceptionResponse))
 import Warpless.Source (Source, leftoverSource, mkSource, readSource)
-import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), InternalInfo, InvalidRequest (BadFirstLine, ConnectionClosedByPeer), getFileInfo)
+import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), InvalidRequest (BadFirstLine, ConnectionClosedByPeer))
 
-http1 :: Settings -> InternalInfo -> Connection -> Application -> SockAddr -> ByteString -> IO ()
-http1 settings ii conn app addr bs0 = do
+http1 :: Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> ByteString -> IO ()
+http1 settings getDate conn app addr bs0 = do
   istatus <- newIORef True
   source <-
     mkSource do
@@ -30,18 +31,18 @@ http1 settings ii conn app addr bs0 = do
       when (not (ByteString.null bytes)) (writeIORef istatus True)
       pure bytes
   leftoverSource source bs0
-  http1server settings ii conn app addr istatus source
+  http1server settings getDate conn app addr istatus source
 
 http1server ::
   Settings ->
-  InternalInfo ->
+  IO GMTDate ->
   Connection ->
   Application ->
   SockAddr ->
   IORef Bool ->
   Source ->
   IO ()
-http1server settings ii conn app addr istatus src =
+http1server settings getDate conn app addr istatus src =
   loop True `catch` \(exception :: SomeException) ->
     case fromException @NoKeepAliveRequest exception of
       -- See comment below referencing
@@ -52,14 +53,14 @@ http1server settings ii conn app addr istatus src =
           -- No valid request
           Just (BadFirstLine _) -> pure ()
           _ -> do
-            _ <- sendErrorResponse settings ii conn istatus defaultRequest {remoteHost = addr} exception
+            _ <- sendErrorResponse settings getDate conn istatus defaultRequest {remoteHost = addr} exception
             throwIO exception
   where
     loop :: Bool -> IO ()
     loop firstRequest = do
-      (request, maybeRemaining, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn (getFileInfo ii) addr src
+      (request, maybeRemaining, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn addr src
       keepAlive <-
-        processRequest settings ii conn app istatus src request maybeRemaining idxhdr nextBodyFlush
+        processRequest settings getDate conn app istatus src request maybeRemaining idxhdr nextBodyFlush
           `UnliftIO.catchAny` \e -> do
             settingsOnException settings (Just request) e
             -- Don't throw the error again to prevent calling settingsOnException twice.
@@ -78,7 +79,7 @@ http1server settings ii conn app addr istatus src =
 
 processRequest ::
   Settings ->
-  InternalInfo ->
+  IO GMTDate ->
   Connection ->
   Application ->
   IORef Bool ->
@@ -88,7 +89,7 @@ processRequest ::
   IndexedHeader ->
   IO ByteString ->
   IO Bool
-processRequest settings ii conn app istatus src req maybeRemaining idxhdr nextBodyFlush = do
+processRequest settings getDate conn app istatus src req maybeRemaining idxhdr nextBodyFlush = do
   -- In the event that some scarce resource was acquired during
   -- creating the request, we need to make sure that we don't get
   -- an async exception before calling the ResponseSource.
@@ -100,7 +101,7 @@ processRequest settings ii conn app istatus src req maybeRemaining idxhdr nextBo
         -- send more meaningful error messages to the user.
         -- However, it may affect performance.
         writeIORef istatus False
-        keepAlive <- sendResponse settings conn ii req idxhdr (readSource src) res
+        keepAlive <- sendResponse settings conn getDate req idxhdr (readSource src) res
         writeIORef keepAliveRef keepAlive
         return ResponseReceived
   case r of
@@ -108,7 +109,7 @@ processRequest settings ii conn app istatus src req maybeRemaining idxhdr nextBo
     Left (e :: SomeException)
       | Just (ExceptionInsideResponseBody e') <- fromException e -> throwIO e'
       | otherwise -> do
-          keepAlive <- sendErrorResponse settings ii conn istatus req e
+          keepAlive <- sendErrorResponse settings getDate conn istatus req e
           settingsOnException settings (Just req) e
           writeIORef keepAliveRef keepAlive
 
@@ -142,11 +143,11 @@ processRequest settings ii conn app istatus src req maybeRemaining idxhdr nextBo
         pure True
     else return False
 
-sendErrorResponse :: Settings -> InternalInfo -> Connection -> IORef Bool -> Request -> SomeException -> IO Bool
-sendErrorResponse settings ii conn istatus req e = do
+sendErrorResponse :: Settings -> IO GMTDate -> Connection -> IORef Bool -> Request -> SomeException -> IO Bool
+sendErrorResponse settings getDate conn istatus req e = do
   status <- readIORef istatus
   if shouldSendErrorResponse e && status
-    then sendResponse settings conn ii req defaultIndexRequestHeader (return ByteString.empty) errorResponse
+    then sendResponse settings conn getDate req defaultIndexRequestHeader (return ByteString.empty) errorResponse
     else return False
   where
     shouldSendErrorResponse se
