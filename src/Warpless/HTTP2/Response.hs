@@ -28,13 +28,13 @@ fromResponse settings getDate req rsp = do
   rspst@(h2rsp, st, hasBody) <- case rsp of
     ResponseFile st rsphdr path mpart -> do
       let rsphdr' = add date rsphdr
-      responseFile st rsphdr' isHead path mpart reqhdr
+      responseFile st rsphdr' method path mpart reqhdr
     ResponseBuilder st rsphdr builder -> do
       let rsphdr' = add date rsphdr
-      return $ responseBuilder st rsphdr' isHead builder
+      return $ responseBuilder st rsphdr' method builder
     ResponseStream st rsphdr strmbdy -> do
       let rsphdr' = add date rsphdr
-      return $ responseStream st rsphdr' isHead strmbdy
+      return $ responseStream st rsphdr' method strmbdy
     _ -> error "ResponseRaw is not supported in HTTP/2"
   mh2data <- getHTTP2Data req
   case mh2data of
@@ -44,7 +44,7 @@ fromResponse settings getDate req rsp = do
           !h2rsp' = H2.setResponseTrailersMaker h2rsp trailers
       return (h2rsp', st, hasBody)
   where
-    !isHead = requestMethod req == H.methodHead
+    !method = requestMethod req
     !reqhdr = requestHeaders req
     !server = S.settingsServerName settings
     add date rsphdr =
@@ -58,19 +58,19 @@ fromResponse settings getDate req rsp = do
 responseFile ::
   H.Status ->
   H.ResponseHeaders ->
-  Bool ->
+  H.Method ->
   FilePath ->
   Maybe FilePart ->
   H.RequestHeaders ->
   IO (H2.Response, H.Status, Bool)
 responseFile st rsphdr _ _ _ _ | noBody st = pure (responseNoBody st rsphdr)
-responseFile st rsphdr isHead path (Just fp) _ =
-  return $ responseFile2XX st rsphdr isHead fileSpec
+responseFile st rsphdr method path (Just fp) _ =
+  return $ responseFile2XX st rsphdr method fileSpec
   where
     !off' = filePartOffset fp
     !bytes' = filePartByteCount fp
     !fileSpec = H2.FileSpec path (fromIntegral @Integer @Int64 off') (fromIntegral @Integer @Int64 bytes')
-responseFile _ rsphdr isHead path Nothing reqhdr = do
+responseFile _ rsphdr method path Nothing reqhdr = do
   efinfo <- UnliftIO.tryIO $ getFileInfo path
   case efinfo of
     Left (_ex :: UnliftIO.IOException) -> return $ response404 rsphdr
@@ -83,13 +83,13 @@ responseFile _ rsphdr isHead path Nothing reqhdr = do
           let !off' = off
               !bytes' = bytes
               !fileSpec = H2.FileSpec path (fromIntegral @Integer @Int64 off') (fromIntegral @Integer @Int64 bytes')
-          return $ responseFile2XX s rsphdr' isHead fileSpec
+          return $ responseFile2XX s rsphdr' method fileSpec
 
 ----------------------------------------------------------------
 
-responseFile2XX :: H.Status -> H.ResponseHeaders -> Bool -> H2.FileSpec -> (H2.Response, H.Status, Bool)
-responseFile2XX st rsphdr isHead fileSpec
-  | isHead = responseNoBody st rsphdr
+responseFile2XX :: H.Status -> H.ResponseHeaders -> H.Method -> H2.FileSpec -> (H2.Response, H.Status, Bool)
+responseFile2XX st rsphdr method fileSpec
+  | method == H.methodHead = responseNoBody st rsphdr
   | otherwise = (H2.responseFile st rsphdr fileSpec, st, True)
 
 ----------------------------------------------------------------
@@ -97,12 +97,11 @@ responseFile2XX st rsphdr isHead fileSpec
 responseBuilder ::
   H.Status ->
   H.ResponseHeaders ->
-  Bool ->
+  H.Method ->
   BB.Builder ->
   (H2.Response, H.Status, Bool)
-responseBuilder st rsphdr isHead builder
-  | noBody st = responseNoBody st rsphdr
-  | isHead = responseNoBody st rsphdr
+responseBuilder st rsphdr method builder
+  | method == H.methodHead || noBody st = responseNoBody st rsphdr
   | otherwise = (H2.responseBuilder st rsphdr builder, st, True)
 
 ----------------------------------------------------------------
@@ -110,12 +109,11 @@ responseBuilder st rsphdr isHead builder
 responseStream ::
   H.Status ->
   H.ResponseHeaders ->
-  Bool ->
+  H.Method ->
   StreamingBody ->
   (H2.Response, H.Status, Bool)
-responseStream st rsphdr isHead strmbdy
-  | noBody st = responseNoBody st rsphdr
-  | isHead = responseNoBody st rsphdr
+responseStream st rsphdr method strmbdy
+  | method == H.methodHead || noBody st = responseNoBody st rsphdr
   | otherwise = (H2.responseStreaming st rsphdr strmbdy, st, True)
 
 ----------------------------------------------------------------

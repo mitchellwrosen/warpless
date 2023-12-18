@@ -2,4 +2,4 @@
 
 A slim `warp` fork.
 
-Up-to-date with `warp` commit `678fabb1c4d8b06cc7c1bc22debb63d02fa0b31c`
+Up-to-date with `warp` commit `e70d8233c808dfe03be8f2fef909f584cd62e9e9`.

@@ -85,7 +85,7 @@ import Warpless.WriteBuffer (toBuilderBuffer)
 --
 --     Simple applications should specify 'Nothing' to
 --     'Maybe' 'FilePart'. The size of the specified file is obtained
---     by disk access or from the file infor cache.
+--     by disk access or from the file info cache.
 --     If-Modified-Since, If-Unmodified-Since, If-Range and Range
 --     are processed. Since a proper status is chosen, 'Status' is
 --     ignored. Last-Modified is inserted.
@@ -113,13 +113,13 @@ sendResponse settings conn getDate req reqidxhdr src response = do
       -- and status, the response to HEAD is processed here.
       --
       -- See definition of rsp below for proper body stripping.
-      (ms, mlen) <- sendRsp conn ver s hs rspidxhdr maxRspBufSize rsp
+      (ms, mlen) <- sendRsp conn ver s hs rspidxhdr maxRspBufSize method rsp
       case ms of
         Nothing -> pure ()
         Just realStatus -> logger req realStatus mlen
       pure ret
     else do
-      _ <- sendRsp conn ver s hs rspidxhdr maxRspBufSize RspNoBody
+      _ <- sendRsp conn ver s hs rspidxhdr maxRspBufSize method RspNoBody
       logger req s Nothing
       pure isPersist
   where
@@ -134,7 +134,8 @@ sendResponse settings conn getDate req reqidxhdr src response = do
     (isPersist, isChunked0) = infoFromRequest req reqidxhdr
     isChunked = not isHead && isChunked0
     (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr (isPersist, isChunked)
-    isHead = requestMethod req == H.methodHead
+    method = requestMethod req
+    isHead = method == H.methodHead
     rsp = case response of
       ResponseFile _ _ path mPart -> RspFile path mPart reqidxhdr isHead
       ResponseBuilder _ _ b
@@ -194,11 +195,12 @@ sendRsp ::
   H.ResponseHeaders ->
   IndexedHeader -> -- Response
   Int -> -- maxBuilderResponseBufferSize
+  H.Method ->
   Rsp ->
   IO (Maybe H.Status, Maybe Integer)
 ----------------------------------------------------------------
 
-sendRsp conn ver s hs _ _ RspNoBody = do
+sendRsp conn ver s hs _ _ _ RspNoBody = do
   -- Not adding Content-Length.
   -- User agents treats it as Content-Length: 0.
   composeHeader ver s hs >>= connSend conn
@@ -206,7 +208,7 @@ sendRsp conn ver s hs _ _ RspNoBody = do
 
 ----------------------------------------------------------------
 
-sendRsp conn ver s hs _ maxRspBufSize (RspBuilder body needsChunked) = do
+sendRsp conn ver s hs _ maxRspBufSize _ (RspBuilder body needsChunked) = do
   header <- composeHeaderBuilder ver s hs needsChunked
   let hdrBdy
         | needsChunked =
@@ -220,7 +222,7 @@ sendRsp conn ver s hs _ maxRspBufSize (RspBuilder body needsChunked) = do
 
 ----------------------------------------------------------------
 
-sendRsp conn ver s hs _ _ (RspStream streamingBody needsChunked) = do
+sendRsp conn ver s hs _ _ _ (RspStream streamingBody needsChunked) = do
   header <- composeHeaderBuilder ver s hs needsChunked
   writeBuffer <- readIORef (connWriteBuffer conn)
   (recv, finish) <- newByteStringBuilderRecv (reuseBufferStrategy (toBuilderBuffer writeBuffer))
@@ -244,7 +246,7 @@ sendRsp conn ver s hs _ _ (RspStream streamingBody needsChunked) = do
 
 ----------------------------------------------------------------
 
-sendRsp conn _ _ _ _ _ (RspRaw withApp src) = do
+sendRsp conn _ _ _ _ _ _ (RspRaw withApp src) = do
   withApp src (connSend conn)
   return (Nothing, Nothing)
 
@@ -252,8 +254,8 @@ sendRsp conn _ _ _ _ _ (RspRaw withApp src) = do
 
 -- Sophisticated WAI applications.
 -- We respect s0. s0 MUST be a proper value.
-sendRsp conn ver s0 hs0 rspidxhdr maxRspBufSize (RspFile path (Just part) _ isHead) =
-  sendRspFile2XX conn ver s0 hs rspidxhdr maxRspBufSize path beg len isHead
+sendRsp conn ver s0 hs0 rspidxhdr maxRspBufSize method (RspFile path (Just part) _ isHead) =
+  sendRspFile2XX conn ver s0 hs rspidxhdr maxRspBufSize method path beg len isHead
   where
     beg = filePartOffset part
     len = filePartByteCount part
@@ -263,14 +265,14 @@ sendRsp conn ver s0 hs0 rspidxhdr maxRspBufSize (RspFile path (Just part) _ isHe
 
 -- Simple WAI applications.
 -- Status is ignored
-sendRsp conn ver _ hs0 rspidxhdr maxRspBufSize (RspFile path Nothing reqidxhdr isHead) = do
+sendRsp conn ver _ hs0 rspidxhdr maxRspBufSize method (RspFile path Nothing reqidxhdr isHead) = do
   efinfo <- UnliftIO.tryIO $ getFileInfo path
   case efinfo of
     Left (_ex :: UnliftIO.IOException) ->
-      sendRspFile404 conn ver hs0 rspidxhdr maxRspBufSize
+      sendRspFile404 conn ver hs0 rspidxhdr maxRspBufSize method
     Right finfo -> case conditionalRequest finfo hs0 rspidxhdr reqidxhdr of
-      WithoutBody s -> sendRsp conn ver s hs0 rspidxhdr maxRspBufSize RspNoBody
-      WithBody s hs beg len -> sendRspFile2XX conn ver s hs rspidxhdr maxRspBufSize path beg len isHead
+      WithoutBody s -> sendRsp conn ver s hs0 rspidxhdr maxRspBufSize method RspNoBody
+      WithBody s hs beg len -> sendRspFile2XX conn ver s hs rspidxhdr maxRspBufSize method path beg len isHead
 
 ----------------------------------------------------------------
 
@@ -281,13 +283,14 @@ sendRspFile2XX ::
   H.ResponseHeaders ->
   IndexedHeader ->
   Int ->
+  H.Method ->
   FilePath ->
   Integer ->
   Integer ->
   Bool ->
   IO (Maybe H.Status, Maybe Integer)
-sendRspFile2XX conn ver s hs rspidxhdr maxRspBufSize path beg len isHead
-  | isHead = sendRsp conn ver s hs rspidxhdr maxRspBufSize RspNoBody
+sendRspFile2XX conn ver s hs rspidxhdr maxRspBufSize method path beg len isHead
+  | isHead = sendRsp conn ver s hs rspidxhdr maxRspBufSize method RspNoBody
   | otherwise = do
       lheader <- composeHeader ver s hs
       connSendFile conn path beg len (pure ()) [lheader]
@@ -299,8 +302,10 @@ sendRspFile404 ::
   H.ResponseHeaders ->
   IndexedHeader ->
   Int ->
+  H.Method ->
   IO (Maybe H.Status, Maybe Integer)
-sendRspFile404 conn ver hs0 rspidxhdr maxRspBufSize = sendRsp conn ver s hs rspidxhdr maxRspBufSize (RspBuilder body True)
+sendRspFile404 conn ver hs0 rspidxhdr maxRspBufSize method =
+  sendRsp conn ver s hs rspidxhdr maxRspBufSize method (RspBuilder body True)
   where
     s = H.notFound404
     hs = replaceHeader H.hContentType "text/plain; charset=utf-8" hs0
