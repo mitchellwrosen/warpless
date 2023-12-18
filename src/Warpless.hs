@@ -56,9 +56,6 @@ module Warpless
     FileInfo (..),
     getFileInfo,
 
-    -- * Version
-    warpVersion,
-
     -- * HTTP/2
 
     -- ** HTTP2 data
@@ -94,7 +91,6 @@ import Warpless.HTTP2.Types
     defaultHTTP2Data,
     defaultPushPromise,
   )
-import Warpless.Response (warpVersion)
 import Warpless.Run (run)
 import Warpless.Settings
   ( Settings (..),

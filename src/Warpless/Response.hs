@@ -1,7 +1,6 @@
 module Warpless.Response
   ( sendResponse,
     sanitizeHeaderValue, -- for testing
-    warpVersion,
     hasBody,
     replaceHeader,
     addServer, -- testing
@@ -23,13 +22,11 @@ import Data.IORef (readIORef)
 import Data.List (deleteBy)
 import Data.Maybe (isJust, mapMaybe)
 import Data.Streaming.ByteString.Builder (newByteStringBuilderRecv, reuseBufferStrategy)
-import Data.Version (showVersion)
 import Data.Word8 (_cr, _lf)
 import Network.HTTP.Types qualified as H
 import Network.HTTP.Types.Header qualified as H
 import Network.Wai
 import Network.Wai.Internal
-import Paths_warpless qualified
 import UnliftIO qualified
 import Warpless.Connection (Connection (..), connSend, connSendFile)
 import Warpless.Date qualified as D
@@ -377,10 +374,6 @@ addDate getDate rspidxhdr hdrs = case rspidxhdr ! fromEnum ResDate of
   Just _ -> return hdrs
 
 ----------------------------------------------------------------
-
--- | The version of Warp.
-warpVersion :: String
-warpVersion = showVersion Paths_warpless.version
 
 {-# INLINE addServer #-}
 addServer :: HeaderValue -> IndexedHeader -> H.ResponseHeaders -> H.ResponseHeaders
