@@ -55,8 +55,9 @@ recvRequest ::
     )
 recvRequest firstRequest settings conn addr src = do
   hdrlines <- headerLines firstRequest src
-  (method, unparsedPath, path, query, httpversion, hdr) <- parseHeaderLines hdrlines
-  let idxhdr = indexRequestHeader hdr
+  (method, unparsedPath, query, httpversion, hdr) <- parseHeaderLines hdrlines
+  let path = Http.extractPath unparsedPath
+      idxhdr = indexRequestHeader hdr
       expect = idxhdr ! fromEnum ReqExpect
       cl = idxhdr ! fromEnum ReqContentLength
       te = idxhdr ! fromEnum ReqTransferEncoding

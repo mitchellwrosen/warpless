@@ -16,14 +16,13 @@ import Foreign.Ptr (Ptr, minusPtr, nullPtr, plusPtr)
 import Foreign.Storable (peek)
 import Network.HTTP.Types qualified as Http
 import UnliftIO (throwIO)
-import Warpless.Types
+import Warpless.Types (InvalidRequest (BadFirstLine, NonHttp, NotEnoughLines))
 
 parseHeaderLines ::
   [ByteString] ->
   IO
     ( Http.Method,
-      ByteString, --  Path
-      ByteString, --  Path, parsed
+      ByteString, --  Unparsed path
       ByteString, --  Query
       Http.HttpVersion,
       Http.RequestHeaders
@@ -32,7 +31,7 @@ parseHeaderLines = \case
   [] -> throwIO (NotEnoughLines [])
   firstLine : otherLines -> do
     (method, path', query, httpversion) <- parseRequestLine firstLine
-    pure (method, path', Http.extractPath path', query, httpversion, map parseHeader otherLines)
+    pure (method, path', query, httpversion, map parseHeader otherLines)
 
 ----------------------------------------------------------------
 
