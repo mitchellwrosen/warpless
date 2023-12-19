@@ -104,7 +104,7 @@ sendResponse ::
   Response ->
   -- | Returing True if the connection is persistent.
   IO Bool
-sendResponse settings conn getDate req reqidxhdr src response = do
+sendResponse settings conn getDate request reqidxhdr source response = do
   headers <- addAltSvc settings <$> addServerAndDate headers0
   if hasBody status
     then do
@@ -126,15 +126,15 @@ sendResponse settings conn getDate req reqidxhdr src response = do
       pure isPersist
   where
     maxRspBufSize = settingsMaxBuilderResponseBufferSize settings
-    ver = httpVersion req
+    ver = httpVersion request
     status = responseStatus response
     headers0 = sanitizeHeaders $ responseHeaders response
     rspidxhdr = indexResponseHeader headers0
     addServerAndDate = addDate getDate rspidxhdr . addServer (settingsServerName settings) rspidxhdr
-    isPersist = checkPersist req reqidxhdr
-    isChunked = not isHead && httpVersion req == H.http11
+    isPersist = checkPersist request reqidxhdr
+    isChunked = not isHead && httpVersion request == H.http11
     (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr isPersist isChunked
-    method = requestMethod req
+    method = requestMethod request
     isHead = method == H.methodHead
     rsp =
       case response of
@@ -145,7 +145,7 @@ sendResponse settings conn getDate req reqidxhdr src response = do
         ResponseStream _ _ fb
           | isHead -> RspNoBody
           | otherwise -> RspStream fb needsChunked
-        ResponseRaw raw _ -> RspRaw raw src
+        ResponseRaw raw _ -> RspRaw raw source
 
 ----------------------------------------------------------------
 

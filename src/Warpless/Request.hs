@@ -1,11 +1,10 @@
 module Warpless.Request
   ( recvRequest,
-    NoKeepAliveRequest (..),
   )
 where
 
 import Control.Concurrent qualified as Concurrent (yield)
-import Control.Exception (Exception, throwIO)
+import Control.Exception (throwIO)
 import Control.Monad (when)
 import Data.Array ((!))
 import Data.ByteString (ByteString)
@@ -34,8 +33,6 @@ import Prelude hiding (lines)
 -- | Receiving a HTTP request from 'Connection' and parsing its header
 --   to create 'Request'.
 recvRequest ::
-  -- | first request on this connection?
-  Bool ->
   Settings ->
   Connection ->
   -- | Peer's address.
@@ -51,8 +48,8 @@ recvRequest ::
       IndexedHeader,
       IO ByteString
     )
-recvRequest isFirstRequest settings conn addr source = do
-  hdrlines <- readHeaderLines isFirstRequest source
+recvRequest settings conn addr source = do
+  hdrlines <- readHeaderLines source
   (method, unparsedPath, query, httpversion, hdr) <- parseHeaderLines hdrlines
   let path = Http.extractPath unparsedPath
       idxhdr = indexRequestHeader hdr
@@ -95,22 +92,12 @@ recvRequest isFirstRequest settings conn addr source = do
 
 ----------------------------------------------------------------
 
-readHeaderLines :: Bool -> Source -> IO [ByteString]
-readHeaderLines isFirstRequest source = do
+readHeaderLines :: Source -> IO [ByteString]
+readHeaderLines source = do
   bytes <- readSource source
   when (ByteString.null bytes) do
-    -- When we're working on a keep-alive connection and trying to
-    -- get the second or later request, we don't want to treat the
-    -- lack of data as a real exception. See the http1 function in
-    -- the Run module for more details.
-    if isFirstRequest
-      then throwIO ConnectionClosedByPeer
-      else throwIO NoKeepAliveRequest
+    throwIO WeirdClient
   push source (THStatus 0 0 id id) bytes
-
-data NoKeepAliveRequest = NoKeepAliveRequest
-  deriving stock (Show)
-  deriving anyclass (Exception)
 
 ----------------------------------------------------------------
 
@@ -169,7 +156,7 @@ push source (THStatus totalLen chunkLen lines prepend) bs' =
     -- update the length, and continue processing.
     Nothing -> do
       bst <- readSource' source
-      when (ByteString.null bst) (throwIO MalformedRequest)
+      when (ByteString.null bst) (throwIO WeirdClient)
       push
         source
         (THStatus totalLen (chunkLen + ByteString.length bs') lines (ByteString.append bs))
@@ -223,7 +210,7 @@ push source (THStatus totalLen chunkLen lines prepend) bs' =
                 -- no more bytes in this chunk, ask for more
                 False -> do
                   bst <- readSource' source
-                  when (ByteString.null bs) (throwIO MalformedRequest)
+                  when (ByteString.null bs) (throwIO WeirdClient)
                   push source status bst
   where
     -- bs: current header chunk, plus maybe (parts of) next header

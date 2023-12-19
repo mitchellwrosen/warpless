@@ -4,7 +4,7 @@ module Warpless.HTTP1
 where
 
 import Control.Concurrent qualified as Conc (yield)
-import Control.Exception (SomeException, catch, fromException, throwIO)
+import Control.Exception (SomeAsyncException (..), SomeException, catch, fromException, throwIO)
 import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
@@ -16,11 +16,11 @@ import UnliftIO qualified
 import Warpless.Connection (Connection (..), connRecv)
 import Warpless.Date (GMTDate)
 import Warpless.Header (IndexedHeader, defaultIndexRequestHeader)
-import Warpless.Request (NoKeepAliveRequest (NoKeepAliveRequest), recvRequest)
+import Warpless.Request (recvRequest)
 import Warpless.Response (sendResponse)
-import Warpless.Settings (Settings (settingsOnException, settingsOnExceptionResponse))
+import Warpless.Settings (Settings (settingsOnException), defaultOnExceptionResponse)
 import Warpless.Source (Source, leftoverSource, mkSource, readSource)
-import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), InvalidRequest)
+import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), WeirdClient)
 
 http1 :: Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> ByteString -> IO ()
 http1 settings getDate conn app addr bs0 = do
@@ -33,48 +33,26 @@ http1 settings getDate conn app addr bs0 = do
   leftoverSource source bs0
   http1server settings getDate conn app addr istatus source
 
-http1server ::
-  Settings ->
-  IO GMTDate ->
-  Connection ->
-  Application ->
-  SockAddr ->
-  IORef Bool ->
-  Source ->
-  IO ()
+http1server :: Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> IORef Bool -> Source -> IO ()
 http1server settings getDate conn app addr istatus src =
-  loop True `catch` \(exception :: SomeException) ->
-    case fromException @NoKeepAliveRequest exception of
-      -- See comment below referencing
-      -- https://github.com/yesodweb/wai/issues/618
-      Just NoKeepAliveRequest -> pure ()
-      Nothing ->
-        case fromException @InvalidRequest exception of
-          Just _ -> pure ()
-          _ -> do
-            _ <- sendErrorResponse settings getDate conn istatus defaultRequest {remoteHost = addr} exception
-            throwIO exception
+  loop `catch` \(exception :: SomeException) ->
+    if
+      | Just _ <- fromException @SomeAsyncException exception -> throwIO exception
+      | Just _ <- fromException @WeirdClient exception -> pure ()
+      | otherwise -> do
+          _ <- sendErrorResponse settings getDate conn istatus defaultRequest {remoteHost = addr} exception
+          throwIO exception
   where
-    loop :: Bool -> IO ()
-    loop firstRequest = do
-      (request, idxhdr, nextBodyFlush) <- recvRequest firstRequest settings conn addr src
+    loop :: IO ()
+    loop = do
+      (request, idxhdr, nextBodyFlush) <- recvRequest settings conn addr src
       keepAlive <-
         processRequest settings getDate conn app istatus src request idxhdr nextBodyFlush
           `UnliftIO.catchAny` \e -> do
             settingsOnException settings (Just request) e
             -- Don't throw the error again to prevent calling settingsOnException twice.
             pure False
-
-      -- When doing a keep-alive connection, the other side may just
-      -- close the connection. We don't want to treat that as an
-      -- exceptional situation, so we pass in False to http1 (which
-      -- in turn passes in False to recvRequest), indicating that
-      -- this is not the first request. If, when trying to read the
-      -- request headers, no data is available, recvRequest will
-      -- throw a NoKeepAliveRequest exception, which we catch here
-      -- and ignore. See: https://github.com/yesodweb/wai/issues/618
-
-      when keepAlive (loop False)
+      when keepAlive loop
 
 processRequest ::
   Settings ->
@@ -87,7 +65,7 @@ processRequest ::
   IndexedHeader ->
   IO ByteString ->
   IO Bool
-processRequest settings getDate conn app istatus src req idxhdr nextBodyFlush = do
+processRequest settings getDate conn app istatus source request idxhdr nextBodyFlush = do
   -- In the event that some scarce resource was acquired during
   -- creating the request, we need to make sure that we don't get
   -- an async exception before calling the ResponseSource.
@@ -95,22 +73,22 @@ processRequest settings getDate conn app istatus src req idxhdr nextBodyFlush = 
 
   r <-
     UnliftIO.tryAny $
-      app req \res -> do
+      app request \response -> do
         -- FIXME consider forcing evaluation of the res here to
         -- send more meaningful error messages to the user.
         -- However, it may affect performance.
         writeIORef istatus False
-        keepAlive <- sendResponse settings conn getDate req idxhdr (readSource src) res
+        keepAlive <- sendResponse settings conn getDate request idxhdr (readSource source) response
         writeIORef keepAliveRef keepAlive
-        return ResponseReceived
+        pure ResponseReceived
 
   case r of
-    Right ResponseReceived -> return ()
+    Right ResponseReceived -> pure ()
     Left (e :: SomeException)
       | Just (ExceptionInsideResponseBody e') <- fromException e -> throwIO e'
       | otherwise -> do
-          keepAlive <- sendErrorResponse settings getDate conn istatus req e
-          settingsOnException settings (Just req) e
+          keepAlive <- sendErrorResponse settings getDate conn istatus request e
+          settingsOnException settings (Just request) e
           writeIORef keepAliveRef keepAlive
 
   keepAlive <- readIORef keepAliveRef
@@ -125,23 +103,19 @@ processRequest settings getDate conn app istatus src req idxhdr nextBodyFlush = 
   -- the number of cores is small.
   Conc.yield
 
-  if keepAlive
-    then do
-      flushEntireBody nextBodyFlush
-      pure True
-    else pure False
+  when keepAlive (flushEntireBody nextBodyFlush)
+  pure keepAlive
 
 sendErrorResponse :: Settings -> IO GMTDate -> Connection -> IORef Bool -> Request -> SomeException -> IO Bool
 sendErrorResponse settings getDate conn istatus req exception = do
   status <- readIORef istatus
   if shouldSendErrorResponse && status
-    then sendResponse settings conn getDate req defaultIndexRequestHeader (return ByteString.empty) errorResponse
+    then sendResponse settings conn getDate req defaultIndexRequestHeader (return ByteString.empty) defaultOnExceptionResponse
     else return False
   where
     shouldSendErrorResponse
-      | Just _ <- fromException @InvalidRequest exception = False
+      | Just _ <- fromException @WeirdClient exception = False
       | otherwise = True
-    errorResponse = settingsOnExceptionResponse settings exception
 
 flushEntireBody :: IO ByteString -> IO ()
 flushEntireBody source =

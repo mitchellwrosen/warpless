@@ -76,10 +76,9 @@ http2server settings getDate addr app h2req0 _aux0 response = do
       mapM_ (logPushPromise req) pps
     Left e -> do
       S.settingsOnException settings (Just req) e
-      let ersp = S.settingsOnExceptionResponse settings e
+      let ersp = S.defaultOnExceptionResponse
       (h2rsp', _) <- fromResponse settings getDate req ersp
       response h2rsp' []
-  pure ()
   where
     toWAIRequest h2req = toRequest settings addr hdr bdylen bdy
       where

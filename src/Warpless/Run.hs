@@ -38,7 +38,7 @@ run settings app =
   where
 
 handleClient :: Settings -> Application -> IO GMTDate -> Network.Socket -> Network.SockAddr -> IO ()
-handleClient settings app ii clientSocket addr = do
+handleClient settings app getDate clientSocket addr = do
   -- NoDelay causes an error for AF_UNIX.
   ignoringExceptions (Network.setSocketOption clientSocket Network.NoDelay 1)
   conn <- socketConnection clientSocket
@@ -46,7 +46,7 @@ handleClient settings app ii clientSocket addr = do
         -- fixme: Upgrading to HTTP/2 should be supported.
         bytes <- connRecv conn
         if ByteString.length bytes >= 4 && "PRI " `ByteString.isPrefixOf` bytes
-          then http2 settings ii conn app addr bytes
-          else http1 settings ii conn app addr bytes
+          then http2 settings getDate conn app addr bytes
+          else http1 settings getDate conn app addr bytes
   unsafeUnmask action `onException` cleanupConnection conn
   cleanupConnection conn

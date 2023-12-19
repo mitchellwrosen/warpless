@@ -38,12 +38,6 @@ data Settings = Settings
     -- | What to do with exceptions thrown by either the application or server.
     -- Default: 'defaultOnException'
     settingsOnException :: !(Maybe Request -> SomeException -> IO ()),
-    -- | A function to create `Response` when an exception occurs.
-    --
-    -- Default: 500, text/plain, \"Something went wrong\"
-    --
-    -- Since 2.0.3
-    settingsOnExceptionResponse :: !(SomeException -> Response),
     -- | Perform no parsing on the rawPathInfo.
     --
     -- This is useful for writing HTTP proxies.
@@ -83,7 +77,6 @@ defaultSettings =
     { settingsPort = 3000,
       settingsHost = "*4",
       settingsOnException = defaultOnException,
-      settingsOnExceptionResponse = defaultOnExceptionResponse,
       settingsNoParsePath = False,
       settingsServerName = C8.pack $ "Warpless/" ++ showVersion Paths_warpless.version,
       settingsServerPushLogger = \_ _ _ -> return (),
@@ -99,7 +92,7 @@ defaultSettings =
 defaultShouldDisplayException :: SomeException -> Bool
 defaultShouldDisplayException se
   | Just ThreadKilled <- fromException se = False
-  | Just (_ :: InvalidRequest) <- fromException se = False
+  | Just (_ :: WeirdClient) <- fromException se = False
   | Just (ioeGetErrorType -> et) <- fromException se,
     et == ResourceVanished || et == InvalidArgument =
       False
@@ -117,18 +110,10 @@ defaultOnException _ e =
       T.pack $
         show e
 
--- | Sending 400 for bad requests.
---   Sending 500 for internal server errors.
-defaultOnExceptionResponse :: SomeException -> Response
-defaultOnExceptionResponse e
-  | Just (_ :: InvalidRequest) <-
-      fromException e =
-      responseLBS
-        H.badRequest400
-        [(H.hContentType, "text/plain; charset=utf-8")]
-        "Bad Request"
-  | otherwise =
-      responseLBS
-        H.internalServerError500
-        [(H.hContentType, "text/plain; charset=utf-8")]
-        "Something went wrong"
+-- | Sending 500 for internal server errors.
+defaultOnExceptionResponse :: Response
+defaultOnExceptionResponse =
+  responseLBS
+    H.internalServerError500
+    [(H.hContentType, "text/plain; charset=utf-8")]
+    "Something went wrong"

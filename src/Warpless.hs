@@ -50,7 +50,6 @@ module Warpless
     -- * Data types
     HostPreference,
     Port,
-    InvalidRequest (..),
 
     -- * Utilities
     FileInfo (..),
@@ -99,4 +98,4 @@ import Warpless.Settings
     defaultSettings,
     defaultShouldDisplayException,
   )
-import Warpless.Types (InvalidRequest (..), Port)
+import Warpless.Types (Port)

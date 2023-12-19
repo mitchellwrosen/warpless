@@ -53,6 +53,7 @@ Library
     DeriveAnyClass
     DerivingStrategies
     LambdaCase
+    MultiWayIf
     OverloadedStrings
     ViewPatterns
   default-language: GHC2021

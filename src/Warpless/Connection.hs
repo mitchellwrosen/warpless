@@ -24,7 +24,7 @@ import Network.Socket.BufferPool qualified as Recv
 import Network.Socket.ByteString qualified as Sock
 import System.IO.Error (ioeGetErrorType)
 import Warpless.Exception (ignoringExceptions)
-import Warpless.Types (InvalidRequest (ConnectionClosedByPeer))
+import Warpless.Types (WeirdClient (..))
 import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
 
 -- | Data type to manipulate IO actions for connections.
@@ -75,7 +75,7 @@ connSend :: Connection -> ByteString -> IO ()
 connSend Connection {connSock} bytes =
   Sock.sendAll connSock bytes `catch` \(ex :: IOError) ->
     if ioeGetErrorType ex == ResourceVanished
-      then throwIO ConnectionClosedByPeer
+      then throwIO WeirdClient
       else throwIO ex
 
 -- | The sending function for files in HTTP/1.1.

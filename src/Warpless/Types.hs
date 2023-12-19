@@ -1,7 +1,7 @@
 module Warpless.Types
   ( Port,
     HeaderValue,
-    InvalidRequest (..),
+    WeirdClient (..),
     ExceptionInsideResponseBody (..),
   )
 where
@@ -22,16 +22,12 @@ type HeaderValue = ByteString
 
 ----------------------------------------------------------------
 
--- | Error types for bad 'Request'.
-data InvalidRequest
-  = MalformedRequest
-  | ConnectionClosedByPeer
-  deriving stock (Eq)
+-- | The client either closed the connection, or sent some data we couldn't parse, or didn't send enough data. Whatever
+-- the case, we simply want to stop servicing this client and close the connection.
+data WeirdClient
+  = WeirdClient
+  deriving stock (Eq, Show)
   deriving anyclass (Exception)
-
-instance Show InvalidRequest where
-  show MalformedRequest = "Warp: Malformed request"
-  show ConnectionClosedByPeer = "Warp: Client closed connection prematurely"
 
 ----------------------------------------------------------------
 

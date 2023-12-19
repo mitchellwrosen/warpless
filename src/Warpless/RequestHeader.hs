@@ -15,7 +15,7 @@ import Foreign.Ptr (Ptr, minusPtr, nullPtr, plusPtr)
 import Foreign.Storable (peek)
 import Network.HTTP.Types qualified as Http
 import UnliftIO (throwIO)
-import Warpless.Types (InvalidRequest (MalformedRequest))
+import Warpless.Types (WeirdClient (..))
 
 parseHeaderLines ::
   [ByteString] ->
@@ -27,7 +27,7 @@ parseHeaderLines ::
       Http.RequestHeaders
     )
 parseHeaderLines = \case
-  [] -> throwIO MalformedRequest
+  [] -> throwIO WeirdClient
   firstLine : otherLines -> do
     (method, path', query, httpversion) <- parseRequestLine firstLine
     pure (method, path', query, httpversion, map parseHeader otherLines)
@@ -56,20 +56,20 @@ parseRequestLine ::
     )
 parseRequestLine (PS fptr off len) =
   withForeignPtr fptr \ptr -> do
-    when (len < 14) (throwIO MalformedRequest)
+    when (len < 14) (throwIO WeirdClient)
 
     let methodptr = ptr `plusPtr` off :: Ptr Word8
         limptr = methodptr `plusPtr` len :: Ptr Word8
 
     pathptr0 <- memchr methodptr 32 (fromIntegral @Int @CSize len) -- ' '
     when (pathptr0 == nullPtr || (limptr `minusPtr` pathptr0) < 11) do
-      throwIO MalformedRequest
+      throwIO WeirdClient
     let pathptr = pathptr0 `plusPtr` 1 :: Ptr Word8
         lim1 = limptr `minusPtr` pathptr0
 
     httpptr0 <- memchr pathptr 32 (fromIntegral @Int @CSize lim1) -- ' '
     when (httpptr0 == nullPtr || (limptr `minusPtr` httpptr0) < 9) do
-      throwIO MalformedRequest
+      throwIO WeirdClient
     let httpptr = httpptr0 `plusPtr` 1 :: Ptr Word8
         lim2 = httpptr0 `minusPtr` pathptr
 
@@ -89,7 +89,7 @@ parseRequestLine (PS fptr off len) =
     check :: Ptr Word8 -> Int -> Word8 -> IO ()
     check p n w = do
       w0 <- peek $ p `plusPtr` n
-      when (w0 /= w) (throwIO MalformedRequest)
+      when (w0 /= w) (throwIO WeirdClient)
 
     checkHTTP :: Ptr Word8 -> IO ()
     checkHTTP httpptr = do
