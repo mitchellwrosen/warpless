@@ -77,7 +77,6 @@ Library
     Warpless.HTTP2.Types
     Warpless.Header
     Warpless.IO
-    Warpless.PackInt
     Warpless.ReadInt
     Warpless.Request
     Warpless.RequestHeader

@@ -251,11 +251,11 @@ sendRsp conn ver s0 hs0 rspidxhdr method (RspFile path (Just part) _) =
 sendRsp conn ver _ hs0 rspidxhdr method (RspFile path Nothing reqidxhdr) = do
   efinfo <- UnliftIO.tryIO $ getFileInfo path
   case efinfo of
-    Left (_ex :: UnliftIO.IOException) ->
-      sendRspFile404 conn ver hs0 rspidxhdr method
-    Right finfo -> case conditionalRequest finfo hs0 method rspidxhdr reqidxhdr of
-      WithoutBody s -> sendRsp conn ver s hs0 rspidxhdr method RspNoBody
-      WithBody s hs beg len -> sendRspFile2XX conn ver s hs rspidxhdr method path beg len
+    Left _ex -> sendRspFile404 conn ver hs0 rspidxhdr method
+    Right finfo ->
+      case conditionalRequest finfo hs0 method rspidxhdr reqidxhdr of
+        WithoutBody s -> sendRsp conn ver s hs0 rspidxhdr method RspNoBody
+        WithBody s hs beg len -> sendRspFile2XX conn ver s hs rspidxhdr method path beg len
 
 ----------------------------------------------------------------
 

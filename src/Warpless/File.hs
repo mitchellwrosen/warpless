@@ -10,7 +10,9 @@ import Control.Applicative ((<|>))
 import Control.Monad (guard)
 import Data.Array ((!))
 import Data.ByteString (ByteString)
+import Data.ByteString.Builder qualified as ByteString.Builder
 import Data.ByteString.Char8 qualified as C8 (pack)
+import Data.ByteString.Lazy qualified as ByteString.Lazy
 import Data.Maybe (fromMaybe, isNothing)
 import Network.HTTP.Date (HTTPDate, parseHTTPDate)
 import Network.HTTP.Types qualified as H
@@ -19,7 +21,6 @@ import Network.Wai (FilePart (filePartByteCount, filePartFileSize, filePartOffse
 import Numeric (showInt)
 import Warpless.FileInfo (FileInfo (..))
 import Warpless.Header (IndexedHeader, RequestHeaderIndex (..), ResponseHeaderIndex (ResLastModified))
-import Warpless.PackInt (packInteger)
 
 ----------------------------------------------------------------
 
@@ -175,7 +176,7 @@ addContentHeaders hs off len size
       let !ctrng = contentRangeHeader off (off + len - 1) size
        in ctrng : hs'
   where
-    !lengthBS = packInteger len
+    !lengthBS = ByteString.Lazy.toStrict (ByteString.Builder.toLazyByteString (ByteString.Builder.integerDec len))
     !hs' = (H.hContentLength, lengthBS) : (H.hAcceptRanges, "bytes") : hs
 
 -- |
