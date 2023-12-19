@@ -6,7 +6,7 @@ where
 import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString.Internal (unsafeCreate)
-import Data.Word8 (Word8)
+import Data.Word (Word8)
 import Foreign.Ptr (Ptr, plusPtr)
 import Foreign.Storable (poke)
 
@@ -19,7 +19,7 @@ packInteger n = unsafeCreate len go0
     len = ceiling $ logBase 10 n' :: Int
     go0 :: Ptr Word8 -> IO ()
     go0 p = go n $ p `plusPtr` (len - 1)
-    go :: Integral a => a -> Ptr Word8 -> IO ()
+    go :: (Integral a) => a -> Ptr Word8 -> IO ()
     go i p = do
       let (d, r) = i `divMod` 10
       poke p (48 + fromIntegral r)

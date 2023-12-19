@@ -45,7 +45,6 @@ Library
     unix ^>= 2.8.0,
     vault >= 0.3,
     wai >= 3.2 && < 3.3,
-    word8,
     unliftio,
   default-extensions:
     BangPatterns

@@ -1,7 +1,7 @@
 -- | Byte-related utilities.
 module Warpless.Byte
   ( cr,
-    newline,
+    lf,
   )
 where
 
@@ -12,5 +12,5 @@ cr :: Word8
 cr = 13
 
 -- | @\\n@
-newline :: Word8
-newline = 10
+lf :: Word8
+lf = 10

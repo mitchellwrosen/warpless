@@ -1,11 +1,18 @@
 module Warpless.ByteString
-  ( readHex,
+  ( containsNewlines,
+    readHex,
   )
 where
 
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.Word (Word8)
+import Warpless.Byte qualified as Byte
+
+containsNewlines :: ByteString -> Bool
+containsNewlines =
+  ByteString.any (\w -> w == Byte.cr || w == Byte.lf)
+{-# INLINE containsNewlines #-}
 
 -- Read a hex number from the head of bytes, and ignore the rest:
 --

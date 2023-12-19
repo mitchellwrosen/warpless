@@ -21,12 +21,13 @@ import Data.IORef (readIORef)
 import Data.List (deleteBy)
 import Data.Maybe (isJust, mapMaybe)
 import Data.Streaming.ByteString.Builder (newByteStringBuilderRecv, reuseBufferStrategy)
-import Data.Word8 (_cr, _lf)
 import Network.HTTP.Types qualified as H
 import Network.HTTP.Types.Header qualified as H
 import Network.Wai
 import Network.Wai.Internal
 import UnliftIO qualified
+import Warpless.Byte qualified as Byte
+import Warpless.ByteString qualified as ByteString
 import Warpless.Connection (Connection (..), connSend, connSendFile)
 import Warpless.Date qualified as D
 import Warpless.File (RspFileInfo (..), addContentHeadersForFilePart, conditionalRequest)
@@ -128,7 +129,7 @@ sendResponse settings conn getDate request reqidxhdr source response = do
     headers0 = sanitizeHeaders $ responseHeaders response
     rspidxhdr = indexResponseHeader headers0
     isPersist = checkPersist request reqidxhdr
-    isChunked = not isHead && httpVersion request == H.http11
+    isChunked = not isHead && ver == H.http11
     (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr isPersist isChunked
     method = requestMethod request
     isHead = method == H.methodHead
@@ -149,16 +150,11 @@ sanitizeHeaders :: H.ResponseHeaders -> H.ResponseHeaders
 sanitizeHeaders = map (sanitize <$>)
   where
     sanitize v
-      | containsNewlines v = sanitizeHeaderValue v -- slow path
+      | ByteString.containsNewlines v = sanitizeHeaderValue v -- slow path
       | otherwise = v -- fast path
 
-{-# INLINE containsNewlines #-}
-containsNewlines :: ByteString -> Bool
-containsNewlines = S.any (\w -> w == _cr || w == _lf)
-
-{-# INLINE sanitizeHeaderValue #-}
 sanitizeHeaderValue :: ByteString -> ByteString
-sanitizeHeaderValue v = case C8.lines $ S.filter (/= _cr) v of
+sanitizeHeaderValue v = case C8.lines $ S.filter (/= Byte.cr) v of
   [] -> ""
   x : xs -> C8.intercalate "\r\n" (x : mapMaybe addSpaceIfMissing xs)
   where
@@ -167,6 +163,7 @@ sanitizeHeaderValue v = case C8.lines $ S.filter (/= _cr) v of
       Just (first, _)
         | first == ' ' || first == '\t' -> Just line
         | otherwise -> Just $ " " <> line
+{-# INLINE sanitizeHeaderValue #-}
 
 ----------------------------------------------------------------
 

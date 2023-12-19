@@ -151,7 +151,7 @@ data THStatus
 
 push :: Source -> THStatus -> ByteString -> IO [ByteString]
 push source (THStatus totalLen chunkLen lines prepend) bs' =
-  case ByteString.elemIndex Byte.newline bs' of
+  case ByteString.elemIndex Byte.lf bs' of
     -- No newline find in this chunk.  Add it to the prepend,
     -- update the length, and continue processing.
     Nothing -> do
