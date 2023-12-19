@@ -88,9 +88,9 @@ http2server settings getDate addr app h2req0 _aux0 response = do
 
     logPushPromise req pp = logger req path (fromIntegral @Int @Integer siz)
       where
-        !logger = S.settingsServerPushLogger settings
         !path = H2.promiseRequestPath pp
         !siz = fromMaybe 0 (H2.responseBodySize (H2.promiseResponse pp))
+    logger = S.settingsServerPushLogger settings
 
 wrappedRecvN :: IORef Bool -> (BufSize -> IO ByteString) -> (BufSize -> IO ByteString)
 wrappedRecvN istatus readN bufsize = do

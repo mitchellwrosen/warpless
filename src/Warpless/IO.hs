@@ -4,7 +4,6 @@ module Warpless.IO
 where
 
 import Control.Exception (mask_)
-import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder.Extra (BufferWriter, Next (Chunk, Done, More), runBuilder)
@@ -13,8 +12,8 @@ import Data.IORef (IORef, readIORef, writeIORef)
 import Foreign.ForeignPtr (newForeignPtr_)
 import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
 
-toBufIOWith :: Int -> IORef WriteBuffer -> (ByteString -> IO ()) -> Builder -> IO ()
-toBufIOWith maxRspBufSize writeBufferRef io builder = do
+toBufIOWith :: IORef WriteBuffer -> (ByteString -> IO ()) -> Builder -> IO ()
+toBufIOWith writeBufferRef io builder = do
   writeBuffer <- readIORef writeBufferRef
   loop writeBuffer (runBuilder builder)
   where
@@ -29,13 +28,6 @@ toBufIOWith maxRspBufSize writeBufferRef io builder = do
         Done -> pure ()
         More minSize next
           | size < minSize -> do
-              when (minSize > maxRspBufSize) $
-                error $
-                  "Sending a Builder response required a buffer of size "
-                    ++ show minSize
-                    ++ " which is bigger than the specified maximum of "
-                    ++ show maxRspBufSize
-                    ++ "!"
               -- The current WriteBuffer is too small to fit the next
               -- batch of bytes from the Builder so we free it and
               -- create a new bigger one. Freeing the current buffer,
