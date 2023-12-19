@@ -9,15 +9,12 @@ where
 
 import Control.Monad (when)
 import Data.ByteString (ByteString)
-import Data.ByteString.Char8 qualified as C8
 import Data.Streaming.Network (HostPreference)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
-import Data.Version (showVersion)
 import GHC.IO.Exception (AsyncException (ThreadKilled), IOErrorType (..))
 import Network.HTTP.Types qualified as H
 import Network.Wai
-import Paths_warpless qualified
 import System.IO (stderr)
 import System.IO.Error (ioeGetErrorType)
 import System.TimeManager
@@ -44,11 +41,6 @@ data Settings = Settings
     --
     -- Default: False
     settingsNoParsePath :: !Bool,
-    -- | Default server name to be sent as the \"Server:\" header
-    --   if an application does not set one.
-    --   If an empty string is set, the \"Server:\" header is not sent.
-    --   This is true even if an application set one.
-    settingsServerName :: !ByteString,
     -- | A HTTP/2 server push log function. Default: no action.
     settingsServerPushLogger :: !(Request -> ByteString -> Integer -> IO ()),
     -- | Specify the header value of Alternative Services (AltSvc:).
@@ -78,7 +70,6 @@ defaultSettings =
       settingsHost = "*4",
       settingsOnException = defaultOnException,
       settingsNoParsePath = False,
-      settingsServerName = C8.pack $ "Warpless/" ++ showVersion Paths_warpless.version,
       settingsServerPushLogger = \_ _ _ -> return (),
       settingsAltSvc = Nothing,
       settingsMaxBuilderResponseBufferSize = 1049000000

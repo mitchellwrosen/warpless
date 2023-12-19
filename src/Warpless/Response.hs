@@ -105,7 +105,7 @@ sendResponse ::
   -- | Returing True if the connection is persistent.
   IO Bool
 sendResponse settings conn getDate request reqidxhdr source response = do
-  headers <- addAltSvc settings <$> addServerAndDate headers0
+  headers <- addAltSvc settings <$> addDate getDate rspidxhdr headers0
   if hasBody status
     then do
       -- The response to HEAD does not have body.
@@ -130,7 +130,6 @@ sendResponse settings conn getDate request reqidxhdr source response = do
     status = responseStatus response
     headers0 = sanitizeHeaders $ responseHeaders response
     rspidxhdr = indexResponseHeader headers0
-    addServerAndDate = addDate getDate rspidxhdr . addServer (settingsServerName settings) rspidxhdr
     isPersist = checkPersist request reqidxhdr
     isChunked = not isHead && httpVersion request == H.http11
     (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr isPersist isChunked

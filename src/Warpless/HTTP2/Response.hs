@@ -5,7 +5,6 @@ where
 
 import Data.ByteString.Builder qualified as BB
 import Data.Int (Int64)
-import Data.List qualified as List
 import Network.HTTP.Types qualified as H
 import Network.HTTP2.Server qualified as H2
 import Network.Wai hiding (responseBuilder, responseFile, responseStream)
@@ -47,12 +46,7 @@ fromResponse settings getDate req rsp = do
   where
     !method = requestMethod req
     !reqhdr = requestHeaders req
-    !server = S.settingsServerName settings
-    add date rsphdr =
-      let hasServerHdr = List.find ((== H.hServer) . fst) rsphdr
-          addSVR = maybe ((H.hServer, server) :) (const id) hasServerHdr
-       in R.addAltSvc settings $
-            (H.hDate, date) : addSVR rsphdr
+    add date rsphdr = R.addAltSvc settings ((H.hDate, date) : rsphdr)
 
 ----------------------------------------------------------------
 
