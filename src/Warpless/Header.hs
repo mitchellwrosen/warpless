@@ -127,7 +127,7 @@ traverseHeader hdr maxidx getIndex =
   where
     insert :: STArray s Int (Maybe HeaderValue) -> Header -> ST s ()
     insert arr (key, val) =
-      when (idx == -1) do
+      when (idx /= -1) do
         writeArray arr idx (Just val)
       where
         idx = getIndex key
