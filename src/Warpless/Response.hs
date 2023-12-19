@@ -1,9 +1,7 @@
 module Warpless.Response
   ( sendResponse,
-    sanitizeHeaderValue, -- for testing
     hasBody,
     replaceHeader,
-    addServer, -- testing
     addAltSvc,
   )
 where
@@ -347,15 +345,6 @@ addDate getDate rspidxhdr hdrs =
     Just _ -> pure hdrs
 
 ----------------------------------------------------------------
-
-{-# INLINE addServer #-}
-addServer :: HeaderValue -> IndexedHeader -> H.ResponseHeaders -> H.ResponseHeaders
-addServer "" rspidxhdr hdrs = case rspidxhdr ! fromEnum ResServer of
-  Nothing -> hdrs
-  _ -> filter ((/= H.hServer) . fst) hdrs
-addServer serverName rspidxhdr hdrs = case rspidxhdr ! fromEnum ResServer of
-  Nothing -> (H.hServer, serverName) : hdrs
-  _ -> hdrs
 
 addAltSvc :: Settings -> H.ResponseHeaders -> H.ResponseHeaders
 addAltSvc settings hs = case settingsAltSvc settings of
