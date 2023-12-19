@@ -20,7 +20,7 @@ import Warpless.Request (recvRequest)
 import Warpless.Response (sendResponse)
 import Warpless.Settings (Settings (settingsOnException), defaultOnExceptionResponse)
 import Warpless.Source (Source, leftoverSource, mkSource, readSource)
-import Warpless.Types (ExceptionInsideResponseBody (ExceptionInsideResponseBody), WeirdClient)
+import Warpless.Types (WeirdClient)
 
 http1 :: Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> ByteString -> IO ()
 http1 settings getDate conn app addr bs0 = do
@@ -84,12 +84,10 @@ processRequest settings getDate conn app istatus source request idxhdr nextBodyF
 
   case r of
     Right ResponseReceived -> pure ()
-    Left (e :: SomeException)
-      | Just (ExceptionInsideResponseBody e') <- fromException e -> throwIO e'
-      | otherwise -> do
-          keepAlive <- sendErrorResponse settings getDate conn istatus request e
-          settingsOnException settings (Just request) e
-          writeIORef keepAliveRef keepAlive
+    Left (e :: SomeException) -> do
+      keepAlive <- sendErrorResponse settings getDate conn istatus request e
+      settingsOnException settings (Just request) e
+      writeIORef keepAliveRef keepAlive
 
   keepAlive <- readIORef keepAliveRef
 
