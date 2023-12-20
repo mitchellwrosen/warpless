@@ -2,7 +2,6 @@ module Warpless.Response
   ( sendResponse,
     hasBody,
     replaceHeader,
-    addAltSvc,
   )
 where
 
@@ -35,7 +34,6 @@ import Warpless.FileInfo (getFileInfo)
 import Warpless.Header
 import Warpless.IO (toBufIOWith)
 import Warpless.ResponseHeader (composeHeader)
-import Warpless.Settings (Settings (..))
 import Warpless.Types (HeaderValue)
 import Warpless.WriteBuffer (toBuilderBuffer)
 
@@ -90,7 +88,6 @@ import Warpless.WriteBuffer (toBuilderBuffer)
 --     are processed. Since a proper status is chosen, 'Status' is
 --     ignored. Last-Modified is inserted.
 sendResponse ::
-  Settings ->
   Connection ->
   IO D.GMTDate ->
   -- | HTTP request.
@@ -103,8 +100,8 @@ sendResponse ::
   Response ->
   -- | Returing True if the connection is persistent.
   IO Bool
-sendResponse settings conn getDate request reqidxhdr source response = do
-  headers <- addAltSvc settings <$> addDate getDate rspidxhdr headers0
+sendResponse conn getDate request reqidxhdr source response = do
+  headers <- addDate getDate rspidxhdr headers0
   let doSendRspNoBody = sendRspNoBody conn ver status headers
   if hasBody status
     then do
@@ -313,13 +310,6 @@ addDate getDate rspidxhdr hdrs =
       gmtdate <- getDate
       pure ((H.hDate, gmtdate) : hdrs)
     Just _ -> pure hdrs
-
-----------------------------------------------------------------
-
-addAltSvc :: Settings -> H.ResponseHeaders -> H.ResponseHeaders
-addAltSvc settings hs = case settingsAltSvc settings of
-  Nothing -> hs
-  Just v -> ("Alt-Svc", v) : hs
 
 ----------------------------------------------------------------
 

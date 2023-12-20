@@ -65,7 +65,7 @@ http2server settings getDate addr app h2req0 _aux0 response = do
   eResponseReceived <-
     UnliftIO.tryAny $
       app req \rsp -> do
-        (h2rsp, hasBody) <- fromResponse settings getDate req rsp
+        (h2rsp, hasBody) <- fromResponse getDate req rsp
         pps <- if hasBody then fromPushPromises req else pure []
         I.writeIORef ref (Just pps)
         _ <- response h2rsp pps
@@ -77,7 +77,7 @@ http2server settings getDate addr app h2req0 _aux0 response = do
     Left e -> do
       S.settingsOnException settings (Just req) e
       let ersp = S.defaultOnExceptionResponse
-      (h2rsp', _) <- fromResponse settings getDate req ersp
+      (h2rsp', _) <- fromResponse getDate req ersp
       response h2rsp' []
   where
     toWAIRequest h2req = toRequest settings addr hdr bdylen bdy

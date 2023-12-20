@@ -40,7 +40,7 @@ http1server settings getDate conn app addr istatus src =
       | Just _ <- fromException @SomeAsyncException exception -> throwIO exception
       | Just _ <- fromException @WeirdClient exception -> pure ()
       | otherwise -> do
-          _ <- sendErrorResponse settings getDate conn istatus defaultRequest {remoteHost = addr} exception
+          _ <- sendErrorResponse getDate conn istatus defaultRequest {remoteHost = addr} exception
           throwIO exception
   where
     loop :: IO ()
@@ -78,14 +78,14 @@ processRequest settings getDate conn app istatus source request idxhdr nextBodyF
         -- send more meaningful error messages to the user.
         -- However, it may affect performance.
         writeIORef istatus False
-        keepAlive <- sendResponse settings conn getDate request idxhdr (readSource source) response
+        keepAlive <- sendResponse conn getDate request idxhdr (readSource source) response
         writeIORef keepAliveRef keepAlive
         pure ResponseReceived
 
   case r of
     Right ResponseReceived -> pure ()
     Left (e :: SomeException) -> do
-      keepAlive <- sendErrorResponse settings getDate conn istatus request e
+      keepAlive <- sendErrorResponse getDate conn istatus request e
       settingsOnException settings (Just request) e
       writeIORef keepAliveRef keepAlive
 
@@ -104,11 +104,11 @@ processRequest settings getDate conn app istatus source request idxhdr nextBodyF
   when keepAlive (flushEntireBody nextBodyFlush)
   pure keepAlive
 
-sendErrorResponse :: Settings -> IO GMTDate -> Connection -> IORef Bool -> Request -> SomeException -> IO Bool
-sendErrorResponse settings getDate conn istatus req exception = do
+sendErrorResponse :: IO GMTDate -> Connection -> IORef Bool -> Request -> SomeException -> IO Bool
+sendErrorResponse getDate conn istatus req exception = do
   status <- readIORef istatus
   if shouldSendErrorResponse && status
-    then sendResponse settings conn getDate req defaultIndexRequestHeader (return ByteString.empty) defaultOnExceptionResponse
+    then sendResponse conn getDate req defaultIndexRequestHeader (return ByteString.empty) defaultOnExceptionResponse
     else return False
   where
     shouldSendErrorResponse

@@ -17,24 +17,18 @@ import Warpless.HTTP2.Request (getHTTP2Data)
 import Warpless.HTTP2.Types (HTTP2Data (http2dataTrailers))
 import Warpless.Header (indexRequestHeader, indexResponseHeader)
 import Warpless.Response qualified as R
-import Warpless.Settings qualified as S
 
 ----------------------------------------------------------------
 
-fromResponse :: S.Settings -> IO GMTDate -> Request -> Response -> IO (H2.Response, Bool)
-fromResponse settings getDate req rsp = do
+fromResponse :: IO GMTDate -> Request -> Response -> IO (H2.Response, Bool)
+fromResponse getDate req rsp = do
   date <- getDate
+  let addDate = ((H.hDate, date) :)
   rspst@(h2rsp, hasBody) <-
     case rsp of
-      ResponseFile st rsphdr path mpart -> do
-        let rsphdr' = add date rsphdr
-        responseFile st rsphdr' method path mpart reqhdr
-      ResponseBuilder st rsphdr builder -> do
-        let rsphdr' = add date rsphdr
-        pure (responseBuilder st rsphdr' method builder)
-      ResponseStream st rsphdr strmbdy -> do
-        let rsphdr' = add date rsphdr
-        return $ responseStream st rsphdr' method strmbdy
+      ResponseFile st rsphdr path mpart -> responseFile st (addDate rsphdr) method path mpart reqhdr
+      ResponseBuilder st rsphdr builder -> pure (responseBuilder st (addDate rsphdr) method builder)
+      ResponseStream st rsphdr strmbdy -> pure (responseStream st (addDate rsphdr) method strmbdy)
       _ -> error "ResponseRaw is not supported in HTTP/2"
   mh2data <- getHTTP2Data req
   case mh2data of
@@ -46,7 +40,6 @@ fromResponse settings getDate req rsp = do
   where
     !method = requestMethod req
     !reqhdr = requestHeaders req
-    add date rsphdr = R.addAltSvc settings ((H.hDate, date) : rsphdr)
 
 ----------------------------------------------------------------
 
@@ -89,24 +82,14 @@ responseFile2XX st rsphdr method fileSpec
 
 ----------------------------------------------------------------
 
-responseBuilder ::
-  H.Status ->
-  H.ResponseHeaders ->
-  H.Method ->
-  BB.Builder ->
-  (H2.Response, Bool)
+responseBuilder :: H.Status -> H.ResponseHeaders -> H.Method -> BB.Builder -> (H2.Response, Bool)
 responseBuilder st rsphdr method builder
   | method == H.methodHead || noBody st = responseNoBody st rsphdr
   | otherwise = (H2.responseBuilder st rsphdr builder, True)
 
 ----------------------------------------------------------------
 
-responseStream ::
-  H.Status ->
-  H.ResponseHeaders ->
-  H.Method ->
-  StreamingBody ->
-  (H2.Response, Bool)
+responseStream :: H.Status -> H.ResponseHeaders -> H.Method -> StreamingBody -> (H2.Response, Bool)
 responseStream st rsphdr method strmbdy
   | method == H.methodHead || noBody st = responseNoBody st rsphdr
   | otherwise = (H2.responseStreaming st rsphdr strmbdy, True)

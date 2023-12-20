@@ -43,10 +43,6 @@ data Settings = Settings
     settingsNoParsePath :: !Bool,
     -- | A HTTP/2 server push log function. Default: no action.
     settingsServerPushLogger :: !(Request -> ByteString -> Integer -> IO ()),
-    -- | Specify the header value of Alternative Services (AltSvc:).
-    --
-    -- Default: Nothing
-    settingsAltSvc :: !(Maybe ByteString),
     -- | Determines the maxium buffer size when sending `Builder` responses
     -- (See `responseBuilder`).
     --
@@ -71,7 +67,6 @@ defaultSettings =
       settingsOnException = defaultOnException,
       settingsNoParsePath = False,
       settingsServerPushLogger = \_ _ _ -> return (),
-      settingsAltSvc = Nothing,
       settingsMaxBuilderResponseBufferSize = 1049000000
     }
 
