@@ -4,11 +4,20 @@ module Warpless.FileInfo
   )
 where
 
-import Control.Exception (throwIO)
-import Data.ByteString (ByteString)
-import Network.HTTP.Date
+import GHC.Real (fromIntegral)
+import Network.HTTP.Date (HTTPDate, epochTimeToHTTPDate, formatHTTPDate)
+import System.IO.Error (userError)
 import System.Posix.Files
+  ( fileMode,
+    fileSize,
+    getFileStatus,
+    intersectFileModes,
+    isDirectory,
+    modificationTime,
+    ownerReadMode,
+  )
 import System.Posix.Types (FileOffset)
+import Warpless.Prelude
 
 -- | File information.
 data FileInfo = FileInfo

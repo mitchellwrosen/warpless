@@ -11,10 +11,7 @@ module Warpless.Connection
   )
 where
 
-import Control.Exception (catch, throwIO)
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import GHC.IO.Exception (IOErrorType (InvalidArgument, ResourceVanished))
 import Network.Sendfile (FileRange (PartOfFile), sendfileWithHeader)
 import Network.Socket (SockAddr, Socket, getSocketName)
@@ -24,6 +21,7 @@ import Network.Socket.BufferPool qualified as Recv
 import Network.Socket.ByteString qualified as Sock
 import System.IO.Error (ioeGetErrorType)
 import Warpless.Exception (ignoringExceptions)
+import Warpless.Prelude
 import Warpless.Types (WeirdClient (..))
 import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
 
@@ -76,7 +74,7 @@ setIsHttp2 conn =
 
 send :: Connection -> ByteString -> IO ()
 send Connection {connSock} bytes =
-  Sock.sendAll connSock bytes `catch` \(ex :: IOError) ->
+  Sock.sendAll connSock bytes `catch` \(ex :: IOException) ->
     if ioeGetErrorType ex == ResourceVanished
       then throwIO WeirdClient
       else throwIO ex
@@ -89,7 +87,7 @@ sendfile Connection {connSock} path off len =
 -- | The connection receiving function. This returns "" for EOF.
 receive :: Connection -> IO ByteString
 receive Connection {connSock, bufferPool} =
-  Recv.receive connSock bufferPool `catch` \(ex :: IOError) ->
+  Recv.receive connSock bufferPool `catch` \(ex :: IOException) ->
     if ioeGetErrorType ex == InvalidArgument
       then pure ByteString.empty
       else throwIO ex

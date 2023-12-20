@@ -4,11 +4,7 @@ module Warpless.HTTP1
 where
 
 import Control.Concurrent qualified as Conc (yield)
-import Control.Exception (SomeAsyncException, SomeException, catch, fromException, throwIO, try)
-import Control.Monad (when)
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Network.Socket (SockAddr)
 import Network.Wai (Application, Request)
 import Network.Wai.Internal (ResponseReceived (ResponseReceived))
@@ -20,6 +16,7 @@ import Warpless.Connection qualified as Connection
 import Warpless.Date (GMTDate)
 import Warpless.HTTP1.Request (receiveRequest)
 import Warpless.HTTP1.Response (sendResponse)
+import Warpless.Prelude
 import Warpless.Settings (Settings (settingsOnException), defaultOnExceptionResponse)
 import Warpless.Source (Source, leftoverSource, mkSource, readSource)
 import Warpless.Types (WeirdClient)

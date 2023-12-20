@@ -5,11 +5,9 @@ module Warpless.ByteString
   )
 where
 
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
-import Data.Int (Int64)
-import Data.Word (Word8)
 import Warpless.Byte qualified as Byte
+import Warpless.Prelude
 
 containsNewlines :: ByteString -> Bool
 containsNewlines =
@@ -22,7 +20,7 @@ containsNewlines =
 -- 255
 readHex :: ByteString -> Word
 readHex =
-  ByteString.foldl' (\i c -> i * 16 + fromIntegral @Word8 @Word (hexToWord c)) 0
+  ByteString.foldl' (\i c -> i * 16 + from @Word8 @Word (hexToWord c)) 0
     . ByteString.takeWhile isHexDigit
 
 -- hexToWord 0-9 = 0-9
@@ -40,7 +38,7 @@ hexToWord w
 -- 42
 readInt64 :: ByteString -> Int64
 readInt64 =
-  ByteString.foldl' (\i c -> i * 10 + fromIntegral @Word8 @Int64 c - 48) 0
+  ByteString.foldl' (\i c -> i * 10 + from @Word8 @Int64 c - 48) 0
     . ByteString.takeWhile isDigit
 {-# INLINE readInt64 #-}
 
@@ -54,6 +52,6 @@ isDigit w =
 isHexDigit :: Word8 -> Bool
 isHexDigit w =
   isDigit w
-    || w >= 65 && w <= 70
-    || w >= 97 && w <= 102
+    || (w >= 65 && w <= 70)
+    || (w >= 97 && w <= 102)
 {-# INLINE isHexDigit #-}

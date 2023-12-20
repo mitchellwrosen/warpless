@@ -6,10 +6,10 @@ module Warpless.HTTP2.Types
   )
 where
 
-import Data.ByteString (ByteString)
-import Network.HTTP.Types qualified as H
-import Network.HTTP2.Frame
-import Network.HTTP2.Server qualified as H2
+import Network.HTTP.Types (ResponseHeaders)
+import Network.HTTP2.Frame (Weight)
+import Network.HTTP2.Server (TrailersMaker, defaultTrailersMaker)
+import Warpless.Prelude
 
 -- | HTTP/2 specific data.
 --
@@ -22,14 +22,15 @@ data HTTP2Data = HTTP2Data
     -- | Accessor for 'H2.TrailersMaker' in 'HTTP2Data'.
     --
     --   Since: 3.2.8 but the type changed in 3.3.0
-    http2dataTrailers :: !H2.TrailersMaker
+    http2dataTrailers :: !TrailersMaker
   }
 
 -- | Default HTTP/2 specific data.
 --
 --   Since: 3.2.7
 defaultHTTP2Data :: HTTP2Data
-defaultHTTP2Data = HTTP2Data [] H2.defaultTrailersMaker
+defaultHTTP2Data =
+  HTTP2Data [] defaultTrailersMaker
 
 -- | HTTP/2 push promise or sever push.
 --   This allows files only for backward-compatibility
@@ -53,7 +54,7 @@ data PushPromise = PushPromise
     --
     --
     --   Since: 3.2.7
-    promisedResponseHeaders :: !H.ResponseHeaders,
+    promisedResponseHeaders :: !ResponseHeaders,
     -- | Accessor for 'Weight' in 'PushPromise'.
     --    Default value: 16.
     --

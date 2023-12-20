@@ -4,7 +4,6 @@ module Warpless.HTTP2.Response
 where
 
 import Data.ByteString.Builder qualified as BB
-import Data.Int (Int64)
 import Network.HTTP.Types qualified as H
 import Network.HTTP2.Server qualified as H2
 import Network.Wai hiding (responseBuilder, responseFile, responseStream)
@@ -18,6 +17,7 @@ import Warpless.FileInfo (getFileInfo)
 import Warpless.HTTP1.Response qualified as HTTP1.Response
 import Warpless.HTTP2.Request (getHTTP2Data)
 import Warpless.HTTP2.Types (HTTP2Data (http2dataTrailers))
+import Warpless.Prelude
 
 ----------------------------------------------------------------
 
@@ -33,7 +33,7 @@ fromResponse getDate req rsp = do
       _ -> error "ResponseRaw is not supported in HTTP/2"
   mh2data <- getHTTP2Data req
   case mh2data of
-    Nothing -> return rspst
+    Nothing -> pure rspst
     Just h2data -> do
       let !trailers = http2dataTrailers h2data
           !h2rsp' = H2.setResponseTrailersMaker h2rsp trailers
@@ -58,7 +58,7 @@ responseFile st rsphdr method path (Just fp) _ =
   where
     !off' = filePartOffset fp
     !bytes' = filePartByteCount fp
-    !fileSpec = H2.FileSpec path (fromIntegral @Integer @Int64 off') (fromIntegral @Integer @Int64 bytes')
+    !fileSpec = H2.FileSpec path (unsafeFrom @Integer @Int64 off') (unsafeFrom @Integer @Int64 bytes')
 responseFile _ rsphdr method path Nothing reqhdr = do
   efinfo <- UnliftIO.tryIO $ getFileInfo path
   case efinfo of
@@ -67,12 +67,12 @@ responseFile _ rsphdr method path Nothing reqhdr = do
       let commonRequestHeaders = CommonRequestHeaders.make reqhdr
           commonResponseHeaders = CommonResponseHeaders.make rsphdr
       case conditionalRequest finfo rsphdr method commonResponseHeaders commonRequestHeaders of
-        WithoutBody s -> return $ responseNoBody s rsphdr
+        WithoutBody s -> pure (responseNoBody s rsphdr)
         WithBody s rsphdr' off bytes -> do
           let !off' = off
               !bytes' = bytes
-              !fileSpec = H2.FileSpec path (fromIntegral @Integer @Int64 off') (fromIntegral @Integer @Int64 bytes')
-          return $ responseFile2XX s rsphdr' method fileSpec
+              !fileSpec = H2.FileSpec path (unsafeFrom @Integer @Int64 off') (unsafeFrom @Integer @Int64 bytes')
+          pure (responseFile2XX s rsphdr' method fileSpec)
 
 ----------------------------------------------------------------
 

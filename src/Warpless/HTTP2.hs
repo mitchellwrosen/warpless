@@ -5,12 +5,8 @@ module Warpless.HTTP2
   )
 where
 
-import Control.Monad (when)
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as BS
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
 import Data.IORef qualified as I
-import Data.Maybe (fromMaybe)
 import Network.HTTP2.Server qualified as H2
 import Network.Socket (SockAddr)
 import Network.Socket.BufferPool (BufSize, makeRecvN)
@@ -25,6 +21,7 @@ import Warpless.HTTP2.File (pReadMaker)
 import Warpless.HTTP2.PushPromise (fromPushPromises)
 import Warpless.HTTP2.Request (toRequest)
 import Warpless.HTTP2.Response (fromResponse)
+import Warpless.Prelude
 import Warpless.Settings qualified as S
 import Warpless.WriteBuffer (WriteBuffer (..))
 
@@ -64,8 +61,8 @@ http2server settings getDate addr app h2req0 _aux0 response = do
   req <- toWAIRequest h2req0
   ref <- I.newIORef Nothing
   eResponseReceived <-
-    UnliftIO.tryAny $
-      app req \rsp -> do
+    UnliftIO.tryAny
+      $ app req \rsp -> do
         (h2rsp, hasBody) <- fromResponse getDate req rsp
         pps <- if hasBody then fromPushPromises req else pure []
         I.writeIORef ref (Just pps)
@@ -74,7 +71,7 @@ http2server settings getDate addr app h2req0 _aux0 response = do
   case eResponseReceived of
     Right ResponseReceived -> do
       Just pps <- I.readIORef ref
-      mapM_ (logPushPromise req) pps
+      traverse_ (logPushPromise req) pps
     Left e -> do
       S.settingsOnException settings (Just req) e
       let ersp = S.defaultOnExceptionResponse
@@ -87,7 +84,7 @@ http2server settings getDate addr app h2req0 _aux0 response = do
         !bdy = H2.getRequestBodyChunk h2req
         !bdylen = H2.requestBodySize h2req
 
-    logPushPromise req pp = logger req path (fromIntegral @Int @Integer siz)
+    logPushPromise req pp = logger req path (from @Int @Integer siz)
       where
         !path = H2.promiseRequestPath pp
         !siz = fromMaybe 0 (H2.responseBodySize (H2.promiseResponse pp))
@@ -95,9 +92,9 @@ http2server settings getDate addr app h2req0 _aux0 response = do
 
 wrappedRecvN :: IORef Bool -> (BufSize -> IO ByteString) -> (BufSize -> IO ByteString)
 wrappedRecvN istatus readN bufsize = do
-  bs <- UnliftIO.handleAny handler $ readN bufsize
-  when (not (BS.null bs)) (writeIORef istatus True)
-  return bs
+  bytes <- UnliftIO.handleAny handler $ readN bufsize
+  when (not (BS.null bytes)) (writeIORef istatus True)
+  pure bytes
   where
     handler :: UnliftIO.SomeException -> IO ByteString
-    handler _ = return ""
+    handler _ = pure ""

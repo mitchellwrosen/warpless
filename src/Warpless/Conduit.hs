@@ -4,13 +4,9 @@ module Warpless.Conduit
   )
 where
 
-import Control.Monad (when)
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Data.Word (Word8)
-import UnliftIO (assert)
-import Warpless.ByteString qualified as ByteString
+import Warpless.ByteString qualified as ByteString (readHex)
+import Warpless.Prelude
 import Warpless.Source (Source, leftoverSource, readSource, readSource')
 
 data CSource
@@ -56,11 +52,11 @@ readCSource (CSource src ref) = do
           writeIORef ref DoneChunking
           pure ByteString.empty
       | otherwise =
-          case ByteString.length bs `compare` fromIntegral len of
+          case ByteString.length bs `compare` unsafeFrom @Word @Int len of
             EQ -> yield' bs NeedLenNewline
-            LT -> yield' bs (HaveLen (len - fromIntegral (ByteString.length bs)))
+            LT -> yield' bs (HaveLen (len - unsafeFrom @Int @Word (ByteString.length bs)))
             GT -> do
-              let (x, y) = ByteString.splitAt (fromIntegral len) bs
+              let (x, y) = ByteString.splitAt (unsafeFrom @Word @Int len) bs
               leftoverSource src y
               yield' x NeedLenNewline
 

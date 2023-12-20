@@ -4,7 +4,7 @@ module Warpless.Exception
   )
 where
 
-import Control.Exception (SomeAsyncException, SomeException, catch, fromException, throwIO)
+import Warpless.Prelude
 
 ignoringExceptions :: IO () -> IO ()
 ignoringExceptions action =

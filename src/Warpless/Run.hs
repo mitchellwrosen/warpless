@@ -4,10 +4,9 @@ module Warpless.Run
 where
 
 import Control.AutoUpdate (defaultUpdateSettings, mkAutoUpdate, updateAction, updateFreq)
-import Control.Exception (MaskingState (..), allowInterrupt, bracket, mask_, onException, uninterruptibleMask_)
+import Control.Exception (MaskingState (..), allowInterrupt)
 import Control.Monad (forever)
 import Data.ByteString qualified as ByteString
-import Data.Functor (void)
 import Data.Streaming.Network (bindPortTCP)
 import GHC.IO (unsafeUnmask)
 import Ki qualified
@@ -20,6 +19,7 @@ import Warpless.Date (GMTDate)
 import Warpless.Exception (ignoringExceptions)
 import Warpless.HTTP1 (http1)
 import Warpless.HTTP2 (http2)
+import Warpless.Prelude
 import Warpless.Settings (Settings, settingsHost, settingsPort)
 
 run :: Settings -> Application -> IO ()

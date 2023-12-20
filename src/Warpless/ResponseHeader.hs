@@ -1,16 +1,17 @@
-module Warpless.ResponseHeader (composeHeader) where
+module Warpless.ResponseHeader
+  ( composeHeader,
+  )
+where
 
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
 import Data.ByteString.Internal (create)
 import Data.CaseInsensitive qualified as CI
-import Data.Functor (void)
 import Data.List (foldl')
-import Data.Word (Word8)
 import Foreign.Ptr (Ptr, plusPtr)
 import GHC.Storable (writeWord8OffPtr)
 import Network.HTTP.Types qualified as H
 import Network.Socket.BufferPool (copy)
+import Warpless.Prelude
 
 ----------------------------------------------------------------
 
@@ -35,9 +36,9 @@ httpVer10 = "HTTP/1.0 "
 copyStatus :: Ptr Word8 -> H.HttpVersion -> H.Status -> IO (Ptr Word8)
 copyStatus !ptr !httpversion !status = do
   ptr1 <- copy ptr httpVer
-  writeWord8OffPtr ptr1 0 (zero + fromIntegral r2)
-  writeWord8OffPtr ptr1 1 (zero + fromIntegral r1)
-  writeWord8OffPtr ptr1 2 (zero + fromIntegral r0)
+  writeWord8OffPtr ptr1 0 (zero + unsafeFrom @Int @Word8 r2)
+  writeWord8OffPtr ptr1 1 (zero + unsafeFrom @Int @Word8 r1)
+  writeWord8OffPtr ptr1 2 (zero + unsafeFrom @Int @Word8 r0)
   writeWord8OffPtr ptr1 3 spc
   ptr2 <- copy (ptr1 `plusPtr` 4) (H.statusMessage status)
   copyCRLF ptr2
@@ -52,7 +53,7 @@ copyStatus !ptr !httpversion !status = do
 {-# INLINE copyHeaders #-}
 copyHeaders :: Ptr Word8 -> [H.Header] -> IO (Ptr Word8)
 copyHeaders !ptr = \case
-  [] -> return ptr
+  [] -> pure ptr
   h : hs -> do
     ptr1 <- copyHeader ptr h
     copyHeaders ptr1 hs
@@ -71,7 +72,7 @@ copyCRLF :: Ptr Word8 -> IO (Ptr Word8)
 copyCRLF !ptr = do
   writeWord8OffPtr ptr 0 cr
   writeWord8OffPtr ptr 1 lf
-  return $! ptr `plusPtr` 2
+  pure $! ptr `plusPtr` 2
 
 zero :: Word8
 zero = 48

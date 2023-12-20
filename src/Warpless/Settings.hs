@@ -7,8 +7,6 @@ module Warpless.Settings
   )
 where
 
-import Control.Monad (when)
-import Data.ByteString (ByteString)
 import Data.Streaming.Network (HostPreference)
 import Data.Text qualified as T
 import Data.Text.IO qualified as TIO
@@ -18,7 +16,7 @@ import Network.Wai
 import System.IO (stderr)
 import System.IO.Error (ioeGetErrorType)
 import System.TimeManager
-import UnliftIO (SomeException, fromException)
+import Warpless.Prelude
 import Warpless.Types
 
 -- | Various Warp server settings. This is purposely kept as an abstract data
@@ -66,7 +64,7 @@ defaultSettings =
       settingsHost = "*4",
       settingsOnException = defaultOnException,
       settingsNoParsePath = False,
-      settingsServerPushLogger = \_ _ _ -> return (),
+      settingsServerPushLogger = \_ _ _ -> pure (),
       settingsMaxBuilderResponseBufferSize = 1049000000
     }
 
@@ -91,10 +89,7 @@ defaultShouldDisplayException se
 -- Since: 3.1.0
 defaultOnException :: Maybe Request -> SomeException -> IO ()
 defaultOnException _ e =
-  when (defaultShouldDisplayException e) $
-    TIO.hPutStrLn stderr $
-      T.pack $
-        show e
+  when (defaultShouldDisplayException e) (TIO.hPutStrLn stderr (T.pack (show e)))
 
 -- | Sending 500 for internal server errors.
 defaultOnExceptionResponse :: Response

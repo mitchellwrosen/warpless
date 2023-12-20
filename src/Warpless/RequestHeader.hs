@@ -3,18 +3,17 @@ module Warpless.RequestHeader
   )
 where
 
-import Control.Monad (when)
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Internal (ByteString (..), memchr)
 import Data.CaseInsensitive qualified as CI
-import Data.Word (Word8)
+import Data.List qualified as List
 import Foreign.C.Types (CSize)
 import Foreign.ForeignPtr (withForeignPtr)
 import Foreign.Ptr (Ptr, minusPtr, nullPtr, plusPtr)
 import Foreign.Storable (peek)
+import GHC.Real (fromIntegral)
 import Network.HTTP.Types qualified as Http
-import UnliftIO (throwIO)
+import Warpless.Prelude
 import Warpless.Types (WeirdClient (..))
 
 parseHeaderLines ::
@@ -30,7 +29,7 @@ parseHeaderLines = \case
   [] -> throwIO WeirdClient
   firstLine : otherLines -> do
     (method, path', query, httpversion) <- parseRequestLine firstLine
-    pure (method, path', query, httpversion, map parseHeader otherLines)
+    pure (method, path', query, httpversion, List.map parseHeader otherLines)
 
 ----------------------------------------------------------------
 

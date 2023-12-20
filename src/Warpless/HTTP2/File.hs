@@ -3,17 +3,15 @@ module Warpless.HTTP2.File
   )
 where
 
-import Control.Monad (when)
-import Data.Coerce (coerce)
-import Data.Int (Int64)
-import Data.Word (Word64)
 import Foreign.C.Error (throwErrno)
 import Foreign.C.Types (CChar, CInt (CInt), CSize (CSize))
 import Foreign.Ptr (Ptr, castPtr)
+import GHC.Real (fromIntegral)
 import Network.HTTP2.Server (PositionRead, PositionReadMaker, Sentinel (Closer))
 import Network.Socket.BufferPool (Buffer)
 import System.Posix (Fd, FdOption (CloseOnExec), OpenMode (ReadOnly), closeFd, defaultFileFlags, nonBlock, openFd, setFdOption)
 import System.Posix.Types (ByteCount, COff (COff), CSsize (..), Fd (..), FileOffset)
+import Warpless.Prelude
 
 -- | 'PositionReadMaker' based on file descriptor cache.
 --
@@ -22,11 +20,11 @@ pReadMaker :: PositionReadMaker
 pReadMaker path = do
   fd <- openFd path ReadOnly defaultFileFlags {nonBlock = False}
   setFdOption fd CloseOnExec True
-  return (pread fd, Closer $ closeFd fd)
+  pure (pread fd, Closer $ closeFd fd)
   where
     pread :: Fd -> PositionRead
     pread fd off bytes buf =
-      positionRead fd buf (fromIntegral @Int64 @Word64 bytes) off
+      positionRead fd buf (unsafeFrom @Int64 @Word64 bytes) off
 
 positionRead :: Fd -> Buffer -> Word64 -> Int64 -> IO Int64
 positionRead fd buf siz off = do

@@ -7,12 +7,9 @@ module Warpless.File
 where
 
 import Control.Applicative ((<|>))
-import Control.Monad (guard)
-import Data.ByteString (ByteString)
 import Data.ByteString.Builder qualified as ByteString.Builder
 import Data.ByteString.Char8 qualified as C8 (pack)
 import Data.ByteString.Lazy qualified as ByteString.Lazy
-import Data.Maybe (fromMaybe, isNothing)
 import Network.HTTP.Date (HTTPDate)
 import Network.HTTP.Types qualified as H
 import Network.HTTP.Types.Header qualified as H
@@ -23,6 +20,7 @@ import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
 import Warpless.CommonResponseHeaders (CommonResponseHeaders)
 import Warpless.CommonResponseHeaders qualified as CommonResponseHeaders
 import Warpless.FileInfo (FileInfo (..))
+import Warpless.Prelude
 
 ----------------------------------------------------------------
 
@@ -145,18 +143,18 @@ contentRangeHeader beg end total = (H.hContentRange, range)
   where
     range =
       -- building with ShowS
-      C8.pack $
-        'b'
-          : 'y'
-          : 't'
-          : 'e'
-          : 's'
-          : ' '
-          : ( if beg > end
-                then ('*' :)
-                else showInt beg . ('-' :) . showInt end
-            )
-            ('/' : showInt total "")
+      C8.pack
+        $ 'b'
+        : 'y'
+        : 't'
+        : 'e'
+        : 's'
+        : ' '
+        : ( if beg > end
+              then ('*' :)
+              else showInt beg . ('-' :) . showInt end
+          )
+          ('/' : showInt total "")
 
 addContentHeaders :: H.ResponseHeaders -> Integer -> Integer -> Integer -> H.ResponseHeaders
 addContentHeaders hs off len size

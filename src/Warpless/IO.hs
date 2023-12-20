@@ -3,13 +3,11 @@ module Warpless.IO
   )
 where
 
-import Control.Exception (mask_)
-import Data.ByteString (ByteString)
 import Data.ByteString.Builder (Builder)
 import Data.ByteString.Builder.Extra (BufferWriter, Next (Chunk, Done, More), runBuilder)
 import Data.ByteString.Internal (ByteString (PS))
-import Data.IORef (IORef, readIORef, writeIORef)
 import Foreign.ForeignPtr (newForeignPtr_)
+import Warpless.Prelude
 import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
 
 toBufIOWith :: IORef WriteBuffer -> (ByteString -> IO ()) -> Builder -> IO ()
@@ -39,7 +37,7 @@ toBufIOWith writeBufferRef io builder = do
                   freeWriteBuffer writeBuffer
                   biggerWriteBuffer <- createWriteBuffer minSize
                   writeIORef writeBufferRef biggerWriteBuffer
-                  return biggerWriteBuffer
+                  pure biggerWriteBuffer
               loop biggerWriteBuffer next
           | otherwise -> loop writeBuffer next
         Chunk bs next -> do

@@ -7,13 +7,14 @@ module Warpless.CommonResponseHeaders
   )
 where
 
-import Control.Monad (when)
 import Control.Monad.ST (ST)
 import Data.Array (Array, (!))
 import Data.Array.ST (MArray (newArray), STArray, runSTArray, writeArray)
 import Data.ByteString qualified as ByteString
 import Data.CaseInsensitive (foldedCase)
+import GHC.Enum (Bounded, Enum, fromEnum, maxBound)
 import Network.HTTP.Types (Header, HeaderName, ResponseHeaders)
+import Warpless.Prelude
 import Warpless.Types (HeaderValue)
 
 -- | Common response headers.
@@ -28,7 +29,7 @@ make_ :: [Header] -> Array Int (Maybe HeaderValue)
 make_ header =
   runSTArray do
     arr <- newArray (0, fromEnum (maxBound @ResponseHeaderIndex)) Nothing
-    mapM_ (insert arr) header
+    traverse_ (insert arr) header
     pure arr
   where
     insert :: STArray s Int (Maybe HeaderValue) -> Header -> ST s ()

@@ -19,16 +19,17 @@ module Warpless.CommonRequestHeaders
   )
 where
 
-import Control.Monad (when)
 import Control.Monad.ST (ST)
 import Data.Array (Array, array, (!))
 import Data.Array.ST (MArray (newArray), STArray, runSTArray, writeArray)
 import Data.ByteString qualified as ByteString
 import Data.CaseInsensitive (foldedCase)
+import Data.CaseInsensitive qualified as CaseInsensitive
+import GHC.Enum (Bounded, Enum, maxBound, fromEnum)
 import Network.HTTP.Date (HTTPDate, parseHTTPDate)
 import Network.HTTP.Types (Header, HeaderName, RequestHeaders)
+import Warpless.Prelude
 import Warpless.Types (HeaderValue)
-import qualified Data.CaseInsensitive as CaseInsensitive
 
 -- | Common request headers.
 newtype CommonRequestHeaders
@@ -46,7 +47,7 @@ make_ :: [Header] -> Array Int (Maybe HeaderValue)
 make_ header =
   runSTArray do
     arr <- newArray (0, maxIndex) Nothing
-    mapM_ (insert arr) header
+    traverse_ (insert arr) header
     pure arr
   where
     insert :: STArray s Int (Maybe HeaderValue) -> Header -> ST s ()

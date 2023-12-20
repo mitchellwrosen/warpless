@@ -5,8 +5,7 @@ module Warpless.Types
   )
 where
 
-import Control.Exception (Exception)
-import Data.ByteString (ByteString)
+import Warpless.Prelude
 
 ----------------------------------------------------------------
 

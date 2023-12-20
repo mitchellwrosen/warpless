@@ -5,21 +5,16 @@ module Warpless.HTTP1.Response
   )
 where
 
-import Control.Exception (catch)
-import Control.Monad (when)
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
 import Data.ByteString.Builder (Builder, byteString)
 import Data.ByteString.Builder.Extra (flush)
 import Data.ByteString.Builder.HTTP.Chunked (chunkedTransferEncoding, chunkedTransferTerminator)
 import Data.ByteString.Char8 qualified as C8
 import Data.CaseInsensitive qualified as CI
-import Data.Foldable (for_)
 import Data.Function (on)
-import Data.IORef (readIORef)
-import Data.List (deleteBy)
-import Data.Maybe (isJust, mapMaybe)
+import Data.List qualified as List
 import Data.Streaming.ByteString.Builder (newByteStringBuilderRecv, reuseBufferStrategy)
+import Data.Tuple (fst)
 import Network.HTTP.Types qualified as H
 import Network.HTTP.Types.Header qualified as H
 import Network.Wai
@@ -42,6 +37,7 @@ import Warpless.Date qualified as D
 import Warpless.File (RspFileInfo (..), addContentHeadersForFilePart, conditionalRequest)
 import Warpless.FileInfo (getFileInfo)
 import Warpless.IO (toBufIOWith)
+import Warpless.Prelude
 import Warpless.ResponseHeader (composeHeader)
 import Warpless.Types (HeaderValue, WeirdClient)
 import Warpless.WriteBuffer (toBuilderBuffer)
@@ -153,7 +149,7 @@ sendResponse conn getDate request commonRequestHeaders source response = do
 ----------------------------------------------------------------
 
 sanitizeHeaders :: H.ResponseHeaders -> H.ResponseHeaders
-sanitizeHeaders = map (sanitize <$>)
+sanitizeHeaders = List.map (sanitize <$>)
   where
     sanitize v
       | ByteString.containsNewlines v = sanitizeHeaderValue v -- slow path
@@ -313,7 +309,7 @@ addDate getDate commonHeaders headers =
 -- >>> replaceHeader "Content-Type" "new" [("content-type","old")]
 -- [("Content-Type","new")]
 replaceHeader :: H.HeaderName -> HeaderValue -> H.ResponseHeaders -> H.ResponseHeaders
-replaceHeader k v hdrs = (k, v) : deleteBy ((==) `on` fst) (k, v) hdrs
+replaceHeader k v hdrs = (k, v) : List.deleteBy ((==) `on` fst) (k, v) hdrs
 
 ----------------------------------------------------------------
 

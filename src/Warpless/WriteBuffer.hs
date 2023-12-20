@@ -11,6 +11,7 @@ import Foreign.ForeignPtr (newForeignPtr_)
 import Foreign.Marshal.Alloc (free, mallocBytes)
 import Foreign.Ptr (plusPtr)
 import Network.Socket.BufferPool (BufSize, Buffer)
+import Warpless.Prelude
 
 -- | A write buffer of a specified size containing bytes and a way to free the buffer.
 data WriteBuffer = WriteBuffer
@@ -27,7 +28,7 @@ data WriteBuffer = WriteBuffer
 createWriteBuffer :: BufSize -> IO WriteBuffer
 createWriteBuffer size = do
   bytes <- mallocBytes size
-  return
+  pure
     WriteBuffer
       { bufBuffer = bytes,
         bufSize = size,
@@ -43,4 +44,4 @@ toBuilderBuffer writeBuffer = do
   let ptr = bufBuffer writeBuffer
       size = bufSize writeBuffer
   fptr <- newForeignPtr_ ptr
-  return $ B.Buffer fptr ptr ptr (ptr `plusPtr` size)
+  pure (B.Buffer fptr ptr ptr (ptr `plusPtr` size))

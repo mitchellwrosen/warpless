@@ -7,9 +7,8 @@ module Warpless.Source
   )
 where
 
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
+import Warpless.Prelude
 
 -- | A source of bytes.
 data Source
