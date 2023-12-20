@@ -9,8 +9,8 @@ import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Unsafe qualified as ByteString.Unsafe
-import Data.CaseInsensitive qualified as CI
 import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.Int (Int64)
 import Data.Vault.Lazy qualified as Vault
 import Data.Word (Word64)
 import Network.HTTP.Types qualified as Http
@@ -18,12 +18,12 @@ import Network.Socket (SockAddr)
 import Network.Wai
 import Network.Wai.Internal (Request (Request))
 import Warpless.Byte qualified as Byte
+import Warpless.ByteString qualified as ByteString
 import Warpless.CommonRequestHeaders (CommonRequestHeaders)
 import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
 import Warpless.Conduit (mkCSource, readCSource)
 import Warpless.Connection (Connection)
 import Warpless.Connection qualified as Connection
-import Warpless.ReadInt (readInt)
 import Warpless.RequestHeader (parseHeaderLines)
 import Warpless.Settings (Settings, settingsNoParsePath)
 import Warpless.Source (Source, leftoverSource, readSource, readSource')
@@ -52,17 +52,15 @@ receiveRequest settings conn addr source = do
   (method, unparsedPath, query, httpversion, headers) <- parseHeaderLines hdrlines
   let path = Http.extractPath unparsedPath
       commonHeaders = CommonRequestHeaders.make headers
-      contentLength = CommonRequestHeaders.getContentLength commonHeaders
-      transferEncoding = CommonRequestHeaders.getTransferEncoding commonHeaders
       handle100Continue = handleExpect conn httpversion (CommonRequestHeaders.getExpect commonHeaders)
       rawPath = if settingsNoParsePath settings then unparsedPath else path
   (rbody, bodyLength) <-
-    if isChunked transferEncoding
+    if CommonRequestHeaders.hasChunkedTransferEncoding commonHeaders
       then do
         csrc <- mkCSource source
         pure (readCSource csrc, ChunkedBody)
       else do
-        let len = toLength contentLength
+        let len = toLength (CommonRequestHeaders.getContentLength commonHeaders)
         sourceN <- SourceN.new source len
         pure (SourceN.read sourceN, KnownLength (fromIntegral @Int @Word64 len))
   -- body producing function which will produce '100-continue', if needed
@@ -112,12 +110,7 @@ handleExpect conn ver = \case
 toLength :: Maybe HeaderValue -> Int
 toLength = \case
   Nothing -> 0
-  Just bytes -> readInt bytes
-
-isChunked :: Maybe HeaderValue -> Bool
-isChunked = \case
-  Just bytes -> CI.foldCase bytes == "chunked"
-  _ -> False
+  Just bytes -> fromIntegral @Int64 @Int (ByteString.readInt64 bytes)
 
 ----------------------------------------------------------------
 

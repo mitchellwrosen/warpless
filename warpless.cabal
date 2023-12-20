@@ -73,6 +73,7 @@ Library
     Warpless.FileInfo
     Warpless.HTTP1
     Warpless.HTTP1.Request
+    Warpless.HTTP1.Response
     Warpless.HTTP2
     Warpless.HTTP2.File
     Warpless.HTTP2.PushPromise
@@ -80,9 +81,7 @@ Library
     Warpless.HTTP2.Response
     Warpless.HTTP2.Types
     Warpless.IO
-    Warpless.ReadInt
     Warpless.RequestHeader
-    Warpless.Response
     Warpless.ResponseHeader
     Warpless.Run
     Warpless.Settings

@@ -1,10 +1,11 @@
-module Warpless.Response
+module Warpless.HTTP1.Response
   ( sendResponse,
     hasBody,
     replaceHeader,
   )
 where
 
+import Control.Exception (catch)
 import Control.Monad (when)
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
@@ -42,7 +43,7 @@ import Warpless.File (RspFileInfo (..), addContentHeadersForFilePart, conditiona
 import Warpless.FileInfo (getFileInfo)
 import Warpless.IO (toBufIOWith)
 import Warpless.ResponseHeader (composeHeader)
-import Warpless.Types (HeaderValue)
+import Warpless.Types (HeaderValue, WeirdClient)
 import Warpless.WriteBuffer (toBuilderBuffer)
 
 -- | Sending a HTTP response to 'Connection' according to 'Response'.
@@ -107,32 +108,35 @@ sendResponse ::
   -- | Returing True if the connection is persistent.
   IO Bool
 sendResponse conn getDate request commonRequestHeaders source response = do
-  headers <- addDate getDate commonResponseHeaders headers0
-  let doSendRspNoBody = sendRspNoBody conn ver status headers
-  if hasBody status
-    then do
-      -- The response to HEAD does not have body.
-      -- But to handle the conditional requests defined RFC 7232 and
-      -- to generate appropriate content-length, content-range,
-      -- and status, the response to HEAD is processed here.
-      --
-      -- See definition of rsp below for proper body stripping.
-      case response of
-        ResponseFile _ _ path maybePart -> do
-          sendRspFile conn ver status headers commonResponseHeaders method path maybePart commonRequestHeaders
-          pure isPersist
-        ResponseBuilder _ _ body -> do
-          if isHead then doSendRspNoBody else sendRspBuilder conn ver status headers body needsChunked
-          pure isKeepAlive
-        ResponseStream _ _ body -> do
-          if isHead then doSendRspNoBody else sendRspStream conn ver status headers body needsChunked
-          pure isKeepAlive
-        ResponseRaw raw _ -> do
-          sendRspRaw conn raw source
-          pure False
-    else do
-      doSendRspNoBody
-      pure isPersist
+  -- If the client disconnects while we're sending it a response, catch that here and return false (meaning this
+  -- connection should not be reused).
+  (`catch` \(_ :: WeirdClient) -> pure False) do
+    headers <- addDate getDate commonResponseHeaders headers0
+    let doSendRspNoBody = sendRspNoBody conn ver status headers
+    if hasBody status
+      then do
+        -- The response to HEAD does not have body.
+        -- But to handle the conditional requests defined RFC 7232 and
+        -- to generate appropriate content-length, content-range,
+        -- and status, the response to HEAD is processed here.
+        --
+        -- See definition of rsp below for proper body stripping.
+        case response of
+          ResponseFile _ _ path maybePart -> do
+            sendRspFile conn ver status headers commonResponseHeaders method path maybePart commonRequestHeaders
+            pure isPersist
+          ResponseBuilder _ _ body -> do
+            if isHead then doSendRspNoBody else sendRspBuilder conn ver status headers body needsChunked
+            pure isKeepAlive
+          ResponseStream _ _ body -> do
+            if isHead then doSendRspNoBody else sendRspStream conn ver status headers body needsChunked
+            pure isKeepAlive
+          ResponseRaw raw _ -> do
+            sendRspRaw conn raw source
+            pure False
+      else do
+        doSendRspNoBody
+        pure isPersist
   where
     hasLength = isJust (CommonResponseHeaders.getContentLength commonResponseHeaders)
     headers0 = sanitizeHeaders (responseHeaders response)

@@ -19,7 +19,7 @@ import Warpless.Connection (Connection)
 import Warpless.Connection qualified as Connection
 import Warpless.Date (GMTDate)
 import Warpless.HTTP1.Request (receiveRequest)
-import Warpless.Response (sendResponse)
+import Warpless.HTTP1.Response (sendResponse)
 import Warpless.Settings (Settings (settingsOnException), defaultOnExceptionResponse)
 import Warpless.Source (Source, leftoverSource, mkSource, readSource)
 import Warpless.Types (WeirdClient)
@@ -64,7 +64,6 @@ http1 settings getDate conn app addr bytes0 = do
                     AnyWeirdClient -> pure False
                     _ -> do
                       settingsOnException settings (Just request) exception
-                      -- Don't throw the error again to prevent calling settingsOnException twice.
                       pure False
             when keepAlive loop
   loop
@@ -81,30 +80,25 @@ processRequest ::
   IO ByteString ->
   IO Bool
 processRequest settings getDate conn app shouldRespondRef source request idxhdr nextBodyFlush = do
-  -- In the event that some scarce resource was acquired during
-  -- creating the request, we need to make sure that we don't get
-  -- an async exception before calling the ResponseSource.
-  keepAliveRef <- newIORef $ error "keepAliveRef not filled"
+  keepAliveRef <- newIORef False
 
-  r <-
-    UnliftIO.tryAny $
+  result <-
+    UnliftIO.tryAny do
       app request \response -> do
-        -- FIXME consider forcing evaluation of the res here to
-        -- send more meaningful error messages to the user.
-        -- However, it may affect performance.
         writeIORef shouldRespondRef False
         keepAlive <- sendResponse conn getDate request idxhdr (readSource source) response
         writeIORef keepAliveRef keepAlive
         pure ResponseReceived
 
-  case r of
-    Right ResponseReceived -> pure ()
-    Left exception -> do
-      keepAlive <- sendErrorResponse getDate conn shouldRespondRef request exception
-      settingsOnException settings (Just request) exception
-      writeIORef keepAliveRef keepAlive
-
-  keepAlive <- readIORef keepAliveRef
+  keepAlive <-
+    case result of
+      Right ResponseReceived -> readIORef keepAliveRef
+      Left exception -> do
+        settingsOnException settings (Just request) exception
+        shouldRespond <- readIORef shouldRespondRef
+        if shouldRespond
+          then sendResponse conn getDate request CommonRequestHeaders.empty (pure ByteString.empty) defaultOnExceptionResponse
+          else pure False
 
   -- We just send a Response and it takes a time to
   -- receive a Request again. If we immediately call recv,
@@ -117,19 +111,8 @@ processRequest settings getDate conn app shouldRespondRef source request idxhdr 
   Conc.yield
 
   when keepAlive (flushEntireBody nextBodyFlush)
-  pure keepAlive
 
-sendErrorResponse :: IO GMTDate -> Connection -> IORef Bool -> Request -> SomeException -> IO Bool
-sendErrorResponse getDate conn shouldRespondRef req exception = do
-  shouldRespond <- readIORef shouldRespondRef
-  if shouldSendErrorResponse && shouldRespond
-    then sendResponse conn getDate req CommonRequestHeaders.empty (pure ByteString.empty) defaultOnExceptionResponse
-    else pure False
-  where
-    shouldSendErrorResponse =
-      case exception of
-        AnyWeirdClient -> False
-        _ -> True
+  pure keepAlive
 
 flushEntireBody :: IO ByteString -> IO ()
 flushEntireBody source =

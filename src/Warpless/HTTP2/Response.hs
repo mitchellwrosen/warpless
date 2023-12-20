@@ -15,9 +15,9 @@ import Warpless.CommonResponseHeaders qualified as CommonResponseHeaders
 import Warpless.Date (GMTDate)
 import Warpless.File (RspFileInfo (WithBody, WithoutBody), conditionalRequest)
 import Warpless.FileInfo (getFileInfo)
+import Warpless.HTTP1.Response qualified as HTTP1.Response
 import Warpless.HTTP2.Request (getHTTP2Data)
 import Warpless.HTTP2.Types (HTTP2Data (http2dataTrailers))
-import Warpless.Response qualified as R
 
 ----------------------------------------------------------------
 
@@ -107,10 +107,10 @@ response404 rsphdr = (h2rsp, True)
   where
     h2rsp = H2.responseBuilder st rsphdr' body
     st = H.notFound404
-    !rsphdr' = R.replaceHeader H.hContentType "text/plain; charset=utf-8" rsphdr
+    !rsphdr' = HTTP1.Response.replaceHeader H.hContentType "text/plain; charset=utf-8" rsphdr
     !body = BB.byteString "File not found"
 
 ----------------------------------------------------------------
 
 noBody :: H.Status -> Bool
-noBody = not . R.hasBody
+noBody = not . HTTP1.Response.hasBody

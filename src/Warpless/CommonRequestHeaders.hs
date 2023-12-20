@@ -15,6 +15,7 @@ module Warpless.CommonRequestHeaders
     getReferer,
     getTransferEncoding,
     getUserAgent,
+    hasChunkedTransferEncoding,
   )
 where
 
@@ -27,6 +28,7 @@ import Data.CaseInsensitive (foldedCase)
 import Network.HTTP.Date (HTTPDate, parseHTTPDate)
 import Network.HTTP.Types (Header, HeaderName, RequestHeaders)
 import Warpless.Types (HeaderValue)
+import qualified Data.CaseInsensitive as CaseInsensitive
 
 -- | Common request headers.
 newtype CommonRequestHeaders
@@ -149,3 +151,9 @@ getTransferEncoding (CommonRequestHeaders headers) = do
 getUserAgent :: CommonRequestHeaders -> Maybe HeaderValue
 getUserAgent (CommonRequestHeaders headers) = do
   headers ! fromEnum ReqUserAgent
+
+hasChunkedTransferEncoding :: CommonRequestHeaders -> Bool
+hasChunkedTransferEncoding headers =
+  case getTransferEncoding headers of
+    Just encoding -> CaseInsensitive.foldCase encoding == "chunked"
+    _ -> False
