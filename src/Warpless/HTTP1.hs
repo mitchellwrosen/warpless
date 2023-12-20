@@ -13,11 +13,12 @@ import Network.Socket (SockAddr)
 import Network.Wai (Application, Request)
 import Network.Wai.Internal (ResponseReceived (ResponseReceived))
 import UnliftIO qualified
+import Warpless.CommonRequestHeaders (CommonRequestHeaders)
+import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
 import Warpless.Connection (Connection)
 import Warpless.Connection qualified as Connection
 import Warpless.Date (GMTDate)
 import Warpless.HTTP1.Request (receiveRequest)
-import Warpless.Header (IndexedHeader, defaultIndexRequestHeader)
 import Warpless.Response (sendResponse)
 import Warpless.Settings (Settings (settingsOnException), defaultOnExceptionResponse)
 import Warpless.Source (Source, leftoverSource, mkSource, readSource)
@@ -54,9 +55,9 @@ http1 settings getDate conn app addr bytes0 = do
           -- response. Again, it may have closed its connection, anyway.
           Left _ -> pure ()
           -- We got a request!
-          Right (request, idxhdr, nextBodyFlush) -> do
+          Right (request, commonHeaders, nextBodyFlush) -> do
             keepAlive <-
-              processRequest settings getDate conn app shouldRespondRef source request idxhdr nextBodyFlush
+              processRequest settings getDate conn app shouldRespondRef source request commonHeaders nextBodyFlush
                 `catch` \exception ->
                   case exception of
                     AnyAsyncException -> throwIO exception
@@ -76,7 +77,7 @@ processRequest ::
   IORef Bool ->
   Source ->
   Request ->
-  IndexedHeader ->
+  CommonRequestHeaders ->
   IO ByteString ->
   IO Bool
 processRequest settings getDate conn app shouldRespondRef source request idxhdr nextBodyFlush = do
@@ -122,7 +123,7 @@ sendErrorResponse :: IO GMTDate -> Connection -> IORef Bool -> Request -> SomeEx
 sendErrorResponse getDate conn shouldRespondRef req exception = do
   shouldRespond <- readIORef shouldRespondRef
   if shouldSendErrorResponse && shouldRespond
-    then sendResponse conn getDate req defaultIndexRequestHeader (pure ByteString.empty) defaultOnExceptionResponse
+    then sendResponse conn getDate req CommonRequestHeaders.empty (pure ByteString.empty) defaultOnExceptionResponse
     else pure False
   where
     shouldSendErrorResponse =

@@ -6,7 +6,6 @@ module Warpless.Response
 where
 
 import Control.Monad (when)
-import Data.Array ((!))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as S
 import Data.ByteString.Builder (Builder, byteString)
@@ -23,16 +22,24 @@ import Data.Streaming.ByteString.Builder (newByteStringBuilderRecv, reuseBufferS
 import Network.HTTP.Types qualified as H
 import Network.HTTP.Types.Header qualified as H
 import Network.Wai
-import Network.Wai.Internal
+  ( FilePart (filePartByteCount, filePartOffset),
+    Request (httpVersion, requestMethod),
+    responseHeaders,
+    responseStatus,
+  )
+import Network.Wai.Internal (Response (..))
 import UnliftIO qualified
 import Warpless.Byte qualified as Byte
 import Warpless.ByteString qualified as ByteString
+import Warpless.CommonRequestHeaders (CommonRequestHeaders)
+import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
+import Warpless.CommonResponseHeaders (CommonResponseHeaders)
+import Warpless.CommonResponseHeaders qualified as CommonResponseHeaders
 import Warpless.Connection (Connection, connWriteBuffer)
 import Warpless.Connection qualified as Connection
 import Warpless.Date qualified as D
 import Warpless.File (RspFileInfo (..), addContentHeadersForFilePart, conditionalRequest)
 import Warpless.FileInfo (getFileInfo)
-import Warpless.Header
 import Warpless.IO (toBufIOWith)
 import Warpless.ResponseHeader (composeHeader)
 import Warpless.Types (HeaderValue)
@@ -84,25 +91,23 @@ import Warpless.WriteBuffer (toBuilderBuffer)
 --
 --     Simple applications should specify 'Nothing' to
 --     'Maybe' 'FilePart'. The size of the specified file is obtained
---     by disk access or from the file info cache.
+--     by disk access.
 --     If-Modified-Since, If-Unmodified-Since, If-Range and Range
 --     are processed. Since a proper status is chosen, 'Status' is
 --     ignored. Last-Modified is inserted.
 sendResponse ::
   Connection ->
   IO D.GMTDate ->
-  -- | HTTP request.
   Request ->
-  -- | Indexed header of HTTP request.
-  IndexedHeader ->
+  CommonRequestHeaders ->
   -- | source from client, for raw response
   IO ByteString ->
   -- | HTTP response including status code and response header.
   Response ->
   -- | Returing True if the connection is persistent.
   IO Bool
-sendResponse conn getDate request reqidxhdr source response = do
-  headers <- addDate getDate rspidxhdr headers0
+sendResponse conn getDate request commonRequestHeaders source response = do
+  headers <- addDate getDate commonResponseHeaders headers0
   let doSendRspNoBody = sendRspNoBody conn ver status headers
   if hasBody status
     then do
@@ -114,7 +119,7 @@ sendResponse conn getDate request reqidxhdr source response = do
       -- See definition of rsp below for proper body stripping.
       case response of
         ResponseFile _ _ path maybePart -> do
-          sendRspFile conn ver status headers rspidxhdr method path maybePart reqidxhdr
+          sendRspFile conn ver status headers commonResponseHeaders method path maybePart commonRequestHeaders
           pure isPersist
         ResponseBuilder _ _ body -> do
           if isHead then doSendRspNoBody else sendRspBuilder conn ver status headers body needsChunked
@@ -129,15 +134,17 @@ sendResponse conn getDate request reqidxhdr source response = do
       doSendRspNoBody
       pure isPersist
   where
-    ver = httpVersion request
-    status = responseStatus response
-    headers0 = sanitizeHeaders $ responseHeaders response
-    rspidxhdr = indexResponseHeader headers0
-    isPersist = checkPersist request reqidxhdr
+    hasLength = isJust (CommonResponseHeaders.getContentLength commonResponseHeaders)
+    headers0 = sanitizeHeaders (responseHeaders response)
     isChunked = not isHead && ver == H.http11
-    (isKeepAlive, needsChunked) = infoFromResponse rspidxhdr isPersist isChunked
-    method = requestMethod request
     isHead = method == H.methodHead
+    isKeepAlive = isPersist && (isChunked || hasLength)
+    isPersist = checkPersist request commonRequestHeaders
+    method = requestMethod request
+    needsChunked = isChunked && not hasLength
+    commonResponseHeaders = CommonResponseHeaders.make headers0
+    status = responseStatus response
+    ver = httpVersion request
 
 ----------------------------------------------------------------
 
@@ -211,13 +218,13 @@ sendRspFile ::
   H.HttpVersion ->
   H.Status ->
   H.ResponseHeaders ->
-  IndexedHeader ->
+  CommonResponseHeaders ->
   H.Method ->
   FilePath ->
   Maybe FilePart ->
-  IndexedHeader ->
+  CommonRequestHeaders ->
   IO ()
-sendRspFile conn ver status headers rspidxhdr method path maybePart reqidxhdr =
+sendRspFile conn ver status headers rspidxhdr method path maybePart commonRequestHeaders =
   case maybePart of
     -- Simple WAI applications.
     -- Status is ignored
@@ -225,7 +232,7 @@ sendRspFile conn ver status headers rspidxhdr method path maybePart reqidxhdr =
       UnliftIO.tryIO (getFileInfo path) >>= \case
         Left _ex -> sendRspFile404 conn ver headers
         Right finfo ->
-          case conditionalRequest finfo headers method rspidxhdr reqidxhdr of
+          case conditionalRequest finfo headers method rspidxhdr commonRequestHeaders of
             WithoutBody status1 -> sendRspNoBody conn ver status1 headers
             WithBody s hs beg len -> sendRspFile2XX conn ver s hs method path beg len
     -- Sophisticated WAI applications.
@@ -262,34 +269,18 @@ sendRspFile404 conn ver headers =
 
 ----------------------------------------------------------------
 
-checkPersist :: Request -> IndexedHeader -> Bool
-checkPersist req reqidxhdr
+checkPersist :: Request -> CommonRequestHeaders -> Bool
+checkPersist req headers
   | httpVersion req == H.http11 = checkPersist11 conn
   | otherwise = checkPersist10 conn
   where
-    conn = reqidxhdr ! fromEnum ReqConnection
+    conn = CommonRequestHeaders.getConnection headers
     checkPersist11 :: Maybe ByteString -> Bool
     checkPersist11 (Just x) | CI.foldCase x == "close" = False
     checkPersist11 _ = True
     checkPersist10 :: Maybe ByteString -> Bool
     checkPersist10 (Just x) | CI.foldCase x == "keep-alive" = True
     checkPersist10 _ = False
-
-----------------------------------------------------------------
-
--- Used for ResponseBuilder and ResponseSource.
--- Don't use this for ResponseFile since this logic does not fit
--- for ResponseFile. For instance, isKeepAlive should be True in some cases
--- even if the response header does not have Content-Length.
---
--- Content-Length is specified by a reverse proxy.
--- Note that CGI does not specify Content-Length.
-infoFromResponse :: IndexedHeader -> Bool -> Bool -> (Bool, Bool)
-infoFromResponse rspidxhdr isPersist isChunked = (isKeepAlive, needsChunked)
-  where
-    needsChunked = isChunked && not hasLength
-    isKeepAlive = isPersist && (isChunked || hasLength)
-    hasLength = isJust $ rspidxhdr ! fromEnum ResContentLength
 
 ----------------------------------------------------------------
 
@@ -303,13 +294,13 @@ addTransferEncoding :: H.ResponseHeaders -> H.ResponseHeaders
 addTransferEncoding hdrs =
   (H.hTransferEncoding, "chunked") : hdrs
 
-addDate :: IO D.GMTDate -> IndexedHeader -> H.ResponseHeaders -> IO H.ResponseHeaders
-addDate getDate rspidxhdr hdrs =
-  case rspidxhdr ! fromEnum ResDate of
+addDate :: IO D.GMTDate -> CommonResponseHeaders -> H.ResponseHeaders -> IO H.ResponseHeaders
+addDate getDate commonHeaders headers =
+  case CommonResponseHeaders.getDate commonHeaders of
     Nothing -> do
       gmtdate <- getDate
-      pure ((H.hDate, gmtdate) : hdrs)
-    Just _ -> pure hdrs
+      pure ((H.hDate, gmtdate) : headers)
+    Just _ -> pure headers
 
 ----------------------------------------------------------------
 

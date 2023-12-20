@@ -8,19 +8,21 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Monad (guard)
-import Data.Array ((!))
 import Data.ByteString (ByteString)
 import Data.ByteString.Builder qualified as ByteString.Builder
 import Data.ByteString.Char8 qualified as C8 (pack)
 import Data.ByteString.Lazy qualified as ByteString.Lazy
 import Data.Maybe (fromMaybe, isNothing)
-import Network.HTTP.Date (HTTPDate, parseHTTPDate)
+import Network.HTTP.Date (HTTPDate)
 import Network.HTTP.Types qualified as H
 import Network.HTTP.Types.Header qualified as H
 import Network.Wai (FilePart (filePartByteCount, filePartFileSize, filePartOffset))
 import Numeric (showInt)
+import Warpless.CommonRequestHeaders (CommonRequestHeaders)
+import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
+import Warpless.CommonResponseHeaders (CommonResponseHeaders)
+import Warpless.CommonResponseHeaders qualified as CommonResponseHeaders
 import Warpless.FileInfo (FileInfo (..))
-import Warpless.Header (IndexedHeader, RequestHeaderIndex (..), ResponseHeaderIndex (ResLastModified))
 
 ----------------------------------------------------------------
 
@@ -35,16 +37,14 @@ conditionalRequest ::
   FileInfo ->
   H.ResponseHeaders ->
   H.Method ->
-  -- | Response
-  IndexedHeader ->
-  -- | Request
-  IndexedHeader ->
+  CommonResponseHeaders ->
+  CommonRequestHeaders ->
   RspFileInfo
-conditionalRequest finfo hs0 method rspidx reqidx = case condition of
+conditionalRequest finfo hs0 method commonResponseHeaders commonRequestHeaders = case condition of
   nobody@(WithoutBody _) -> nobody
   WithBody s _ off len ->
     let !hs1 = addContentHeaders hs0 off len size
-        !hs = case rspidx ! fromEnum ResLastModified of
+        !hs = case CommonResponseHeaders.getLastModified commonResponseHeaders of
           Just _ -> hs1
           Nothing -> (H.hLastModified, date) : hs1
      in WithBody s hs off len
@@ -66,64 +66,53 @@ conditionalRequest finfo hs0 method rspidx reqidx = case condition of
     -- using ETags. And sending If-(None-)Match headers in a request
     -- to a server that doesn't use them is requester's problem.
     !mcondition =
-      ifunmodified reqidx mtime
-        <|> ifmodified reqidx mtime method
-        <|> ifrange reqidx mtime method size
+      ifunmodified commonRequestHeaders mtime
+        <|> ifmodified commonRequestHeaders mtime method
+        <|> ifrange commonRequestHeaders mtime method size
 
-    !condition = fromMaybe (unconditional reqidx size) mcondition
-
-----------------------------------------------------------------
-
-ifModifiedSince :: IndexedHeader -> Maybe HTTPDate
-ifModifiedSince reqidx = reqidx ! fromEnum ReqIfModifiedSince >>= parseHTTPDate
-
-ifUnmodifiedSince :: IndexedHeader -> Maybe HTTPDate
-ifUnmodifiedSince reqidx = reqidx ! fromEnum ReqIfUnmodifiedSince >>= parseHTTPDate
-
-ifRange :: IndexedHeader -> Maybe HTTPDate
-ifRange reqidx = reqidx ! fromEnum ReqIfRange >>= parseHTTPDate
+    !condition = fromMaybe (unconditional commonRequestHeaders size) mcondition
 
 ----------------------------------------------------------------
 
-ifmodified :: IndexedHeader -> HTTPDate -> H.Method -> Maybe RspFileInfo
-ifmodified reqidx mtime method = do
-  date <- ifModifiedSince reqidx
+ifmodified :: CommonRequestHeaders -> HTTPDate -> H.Method -> Maybe RspFileInfo
+ifmodified headers mtime method = do
+  date <- CommonRequestHeaders.getIfModifiedSince headers
   -- According to RFC 9110:
   -- "A recipient MUST ignore If-Modified-Since if the request
   -- contains an If-None-Match header field; [...]"
-  guard . isNothing $ reqidx ! fromEnum ReqIfNoneMatch
+  guard (isNothing (CommonRequestHeaders.getIfNoneMatch headers))
   -- "A recipient MUST ignore the If-Modified-Since header field
   -- if [...] the request method is neither GET nor HEAD."
   guard $ method == H.methodGet || method == H.methodHead
   guard $ date == mtime || date > mtime
   Just $ WithoutBody H.notModified304
 
-ifunmodified :: IndexedHeader -> HTTPDate -> Maybe RspFileInfo
-ifunmodified reqidx mtime = do
-  date <- ifUnmodifiedSince reqidx
+ifunmodified :: CommonRequestHeaders -> HTTPDate -> Maybe RspFileInfo
+ifunmodified headers mtime = do
+  date <- CommonRequestHeaders.getIfUnmodifiedSince headers
   -- According to RFC 9110:
   -- "A recipient MUST ignore If-Unmodified-Since if the request
   -- contains an If-Match header field; [...]"
-  guard . isNothing $ reqidx ! fromEnum ReqIfMatch
+  guard . isNothing $ CommonRequestHeaders.getIfMatch headers
   guard $ date /= mtime && date < mtime
   Just $ WithoutBody H.preconditionFailed412
 
-ifrange :: IndexedHeader -> HTTPDate -> H.Method -> Integer -> Maybe RspFileInfo
-ifrange reqidx mtime method size = do
+ifrange :: CommonRequestHeaders -> HTTPDate -> H.Method -> Integer -> Maybe RspFileInfo
+ifrange headers mtime method size = do
   -- According to RFC 9110:
   -- "When the method is GET and both Range and If-Range are
   -- present, evaluate the If-Range precondition:"
-  date <- ifRange reqidx
-  rng <- reqidx ! fromEnum ReqRange
+  date <- CommonRequestHeaders.getIfRange headers
+  rng <- CommonRequestHeaders.getRange headers
   guard $ method == H.methodGet
   pure
     if date == mtime
       then parseRange rng size
       else WithBody H.ok200 [] 0 size
 
-unconditional :: IndexedHeader -> Integer -> RspFileInfo
-unconditional reqidx =
-  case reqidx ! fromEnum ReqRange of
+unconditional :: CommonRequestHeaders -> Integer -> RspFileInfo
+unconditional headers =
+  case CommonRequestHeaders.getRange headers of
     Nothing -> WithBody H.ok200 [] 0
     Just rng -> parseRange rng
 

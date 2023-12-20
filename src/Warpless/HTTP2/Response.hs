@@ -10,12 +10,13 @@ import Network.HTTP2.Server qualified as H2
 import Network.Wai hiding (responseBuilder, responseFile, responseStream)
 import Network.Wai.Internal (Response (..))
 import UnliftIO qualified
+import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
+import Warpless.CommonResponseHeaders qualified as CommonResponseHeaders
 import Warpless.Date (GMTDate)
 import Warpless.File (RspFileInfo (WithBody, WithoutBody), conditionalRequest)
 import Warpless.FileInfo (getFileInfo)
 import Warpless.HTTP2.Request (getHTTP2Data)
 import Warpless.HTTP2.Types (HTTP2Data (http2dataTrailers))
-import Warpless.Header (indexRequestHeader, indexResponseHeader)
 import Warpless.Response qualified as R
 
 ----------------------------------------------------------------
@@ -63,9 +64,9 @@ responseFile _ rsphdr method path Nothing reqhdr = do
   case efinfo of
     Left (_ex :: UnliftIO.IOException) -> pure (response404 rsphdr)
     Right finfo -> do
-      let reqidx = indexRequestHeader reqhdr
-          rspidx = indexResponseHeader rsphdr
-      case conditionalRequest finfo rsphdr method rspidx reqidx of
+      let commonRequestHeaders = CommonRequestHeaders.make reqhdr
+          commonResponseHeaders = CommonResponseHeaders.make rsphdr
+      case conditionalRequest finfo rsphdr method commonResponseHeaders commonRequestHeaders of
         WithoutBody s -> return $ responseNoBody s rsphdr
         WithBody s rsphdr' off bytes -> do
           let !off' = off

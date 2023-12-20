@@ -63,6 +63,8 @@ Library
     Paths_warpless
     Warpless.Byte
     Warpless.ByteString
+    Warpless.CommonRequestHeaders
+    Warpless.CommonResponseHeaders
     Warpless.Conduit
     Warpless.Connection
     Warpless.Date
@@ -77,7 +79,6 @@ Library
     Warpless.HTTP2.Request
     Warpless.HTTP2.Response
     Warpless.HTTP2.Types
-    Warpless.Header
     Warpless.IO
     Warpless.ReadInt
     Warpless.RequestHeader

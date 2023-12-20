@@ -6,7 +6,6 @@ where
 import Control.Concurrent qualified as Concurrent (yield)
 import Control.Exception (throwIO)
 import Control.Monad (when)
-import Data.Array ((!))
 import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Unsafe qualified as ByteString.Unsafe
@@ -19,10 +18,11 @@ import Network.Socket (SockAddr)
 import Network.Wai
 import Network.Wai.Internal (Request (Request))
 import Warpless.Byte qualified as Byte
+import Warpless.CommonRequestHeaders (CommonRequestHeaders)
+import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
 import Warpless.Conduit (mkCSource, readCSource)
 import Warpless.Connection (Connection)
 import Warpless.Connection qualified as Connection
-import Warpless.Header
 import Warpless.ReadInt (readInt)
 import Warpless.RequestHeader (parseHeaderLines)
 import Warpless.Settings (Settings, settingsNoParsePath)
@@ -42,24 +42,19 @@ receiveRequest ::
   SockAddr ->
   -- | Where HTTP request comes from.
   Source ->
-  -- |
-  -- 'Request' passed to 'Application',
-  -- 'IndexedHeader' of HTTP request for internal use,
-  -- Body producing action used for flushing the request body
   IO
     ( Request,
-      IndexedHeader,
+      CommonRequestHeaders,
       IO ByteString
     )
 receiveRequest settings conn addr source = do
   hdrlines <- readHeaderLines source
-  (method, unparsedPath, query, httpversion, hdr) <- parseHeaderLines hdrlines
+  (method, unparsedPath, query, httpversion, headers) <- parseHeaderLines hdrlines
   let path = Http.extractPath unparsedPath
-      idxhdr = indexRequestHeader hdr
-      expect = idxhdr ! fromEnum ReqExpect
-      contentLength = idxhdr ! fromEnum ReqContentLength
-      transferEncoding = idxhdr ! fromEnum ReqTransferEncoding
-      handle100Continue = handleExpect conn httpversion expect
+      commonHeaders = CommonRequestHeaders.make headers
+      contentLength = CommonRequestHeaders.getContentLength commonHeaders
+      transferEncoding = CommonRequestHeaders.getTransferEncoding commonHeaders
+      handle100Continue = handleExpect conn httpversion (CommonRequestHeaders.getExpect commonHeaders)
       rawPath = if settingsNoParsePath settings then unparsedPath else path
   (rbody, bodyLength) <-
     if isChunked transferEncoding
@@ -80,18 +75,18 @@ receiveRequest settings conn addr source = do
             rawPathInfo = rawPath,
             rawQueryString = query,
             queryString = Http.parseQuery query,
-            requestHeaders = hdr,
+            requestHeaders = headers,
             isSecure = False,
             remoteHost = addr,
             requestBody = rbody',
             vault = Vault.empty,
             requestBodyLength = bodyLength,
-            requestHeaderHost = idxhdr ! fromEnum ReqHost,
-            requestHeaderRange = idxhdr ! fromEnum ReqRange,
-            requestHeaderReferer = idxhdr ! fromEnum ReqReferer,
-            requestHeaderUserAgent = idxhdr ! fromEnum ReqUserAgent
+            requestHeaderHost = CommonRequestHeaders.getHost commonHeaders,
+            requestHeaderRange = CommonRequestHeaders.getRange commonHeaders,
+            requestHeaderReferer = CommonRequestHeaders.getReferer commonHeaders,
+            requestHeaderUserAgent = CommonRequestHeaders.getUserAgent commonHeaders
           }
-  pure (req, idxhdr, rbody)
+  pure (req, commonHeaders, rbody)
 
 ----------------------------------------------------------------
 
