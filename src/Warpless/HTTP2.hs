@@ -51,7 +51,7 @@ http2 settings getDate conn app peerAddr bs = do
               confPeerSockAddr = peerAddr
             }
     Connection.setIsHttp2 conn
-    H2.run conf $ http2server settings getDate peerAddr app
+    H2.run H2.defaultServerConfig conf $ http2server settings getDate peerAddr app
 
 -- | Converting WAI application to the server type of http2 library.
 --

@@ -34,7 +34,7 @@ Library
     case-insensitive ^>= 1.2,
     http-date,
     http-types >= 0.12,
-    http2 >= 3.0      && < 5,
+    http2 ^>= 5.0.0,
     ki ^>= 1.0.0.2,
     network ^>= 3.1.2,
     recv ^>= 0.1.0,
@@ -44,7 +44,7 @@ Library
     time-manager,
     unix ^>= 2.8.0,
     vault >= 0.3,
-    wai >= 3.2 && < 3.3,
+    wai ^>= 3.2.2,
     witch ^>= 1.2.0,
     unliftio,
   default-extensions:
@@ -83,6 +83,7 @@ Library
     Warpless.HTTP2.Response
     Warpless.HTTP2.Types
     Warpless.IO
+    Warpless.Prelude
     Warpless.RequestHeader
     Warpless.ResponseHeader
     Warpless.Run

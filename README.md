@@ -2,7 +2,8 @@
 
 A slim `warp` fork.
 
-Up-to-date with `warp` commit `a2de346e41c0828560b850c1ea1ada849f990025`.
+Last synchronized with `warp` December 20, 2023.
+Latest commit porked over: `152f9b143725ba1f878e159a32d04aa4b7c382a4`.
 
 ## Changes
 
