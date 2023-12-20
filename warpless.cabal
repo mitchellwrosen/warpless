@@ -54,6 +54,7 @@ Library
     LambdaCase
     MultiWayIf
     OverloadedStrings
+    PatternSynonyms
     ViewPatterns
   default-language: GHC2021
   exposed-modules:
@@ -69,6 +70,7 @@ Library
     Warpless.File
     Warpless.FileInfo
     Warpless.HTTP1
+    Warpless.HTTP1.Request
     Warpless.HTTP2
     Warpless.HTTP2.File
     Warpless.HTTP2.PushPromise
@@ -78,7 +80,6 @@ Library
     Warpless.Header
     Warpless.IO
     Warpless.ReadInt
-    Warpless.Request
     Warpless.RequestHeader
     Warpless.Response
     Warpless.ResponseHeader

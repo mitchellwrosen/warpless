@@ -27,7 +27,8 @@ import Network.Wai.Internal
 import UnliftIO qualified
 import Warpless.Byte qualified as Byte
 import Warpless.ByteString qualified as ByteString
-import Warpless.Connection (Connection (..), connSend, connSendFile)
+import Warpless.Connection (Connection, connWriteBuffer)
+import Warpless.Connection qualified as Connection
 import Warpless.Date qualified as D
 import Warpless.File (RspFileInfo (..), addContentHeadersForFilePart, conditionalRequest)
 import Warpless.FileInfo (getFileInfo)
@@ -165,7 +166,7 @@ sendRspNoBody :: Connection -> H.HttpVersion -> H.Status -> H.ResponseHeaders ->
 sendRspNoBody conn ver status headers =
   -- Not adding Content-Length.
   -- User agents treats it as Content-Length: 0.
-  composeHeader ver status headers >>= connSend conn
+  composeHeader ver status headers >>= Connection.send conn
 
 sendRspBuilder :: Connection -> H.HttpVersion -> H.Status -> H.ResponseHeaders -> Builder -> Bool -> IO ()
 sendRspBuilder conn ver status headers body needsChunked = do
@@ -177,7 +178,7 @@ sendRspBuilder conn ver status headers body needsChunked = do
               <> chunkedTransferTerminator
         | otherwise = header <> body
       writeBufferRef = connWriteBuffer conn
-  toBufIOWith writeBufferRef (connSend conn) hdrBdy
+  toBufIOWith writeBufferRef (Connection.send conn) hdrBdy
 
 sendRspStream :: Connection -> H.HttpVersion -> H.Status -> H.ResponseHeaders -> ((Builder -> IO ()) -> IO () -> IO ()) -> Bool -> IO ()
 sendRspStream conn ver status headers streamingBody needsChunked = do
@@ -187,9 +188,9 @@ sendRspStream conn ver status headers streamingBody needsChunked = do
   let send builder = do
         popper <- recv builder
         let loop = do
-              bs <- popper
-              when (not (S.null bs)) do
-                connSend conn bs
+              bytes <- popper
+              when (not (S.null bytes)) do
+                Connection.send conn bytes
                 loop
         loop
       sendChunk
@@ -199,11 +200,11 @@ sendRspStream conn ver status headers streamingBody needsChunked = do
   streamingBody sendChunk (sendChunk flush)
   when needsChunked $ send chunkedTransferTerminator
   mbs <- finish
-  for_ mbs (connSend conn)
+  for_ mbs (Connection.send conn)
 
 sendRspRaw :: Connection -> (IO ByteString -> (ByteString -> IO ()) -> IO ()) -> IO ByteString -> IO ()
 sendRspRaw conn withApp src =
-  withApp src (connSend conn)
+  withApp src (Connection.send conn)
 
 sendRspFile ::
   Connection ->
@@ -220,9 +221,8 @@ sendRspFile conn ver status headers rspidxhdr method path maybePart reqidxhdr =
   case maybePart of
     -- Simple WAI applications.
     -- Status is ignored
-    Nothing -> do
-      efinfo <- UnliftIO.tryIO $ getFileInfo path
-      case efinfo of
+    Nothing ->
+      UnliftIO.tryIO (getFileInfo path) >>= \case
         Left _ex -> sendRspFile404 conn ver headers
         Right finfo ->
           case conditionalRequest finfo headers method rspidxhdr reqidxhdr of
@@ -251,7 +251,7 @@ sendRspFile2XX conn ver status headers method path beg len
   | method == H.methodHead = sendRspNoBody conn ver status headers
   | otherwise = do
       lheader <- composeHeader ver status headers
-      connSendFile conn path beg len (pure ()) [lheader]
+      Connection.sendfile conn path beg len (pure ()) [lheader]
 
 sendRspFile404 :: Connection -> H.HttpVersion -> H.ResponseHeaders -> IO ()
 sendRspFile404 conn ver headers =

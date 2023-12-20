@@ -7,18 +7,19 @@ import Data.CaseInsensitive qualified as CI
 import Data.Functor (void)
 import Data.List (foldl')
 import Data.Word (Word8)
-import Foreign.Ptr
-import GHC.Storable
+import Foreign.Ptr (Ptr, plusPtr)
+import GHC.Storable (writeWord8OffPtr)
 import Network.HTTP.Types qualified as H
 import Network.Socket.BufferPool (copy)
 
 ----------------------------------------------------------------
 
 composeHeader :: H.HttpVersion -> H.Status -> H.ResponseHeaders -> IO ByteString
-composeHeader !httpversion !status !responseHeaders = create len $ \ptr -> do
-  ptr1 <- copyStatus ptr httpversion status
-  ptr2 <- copyHeaders ptr1 responseHeaders
-  void $ copyCRLF ptr2
+composeHeader !httpversion !status !responseHeaders =
+  create len \ptr -> do
+    ptr1 <- copyStatus ptr httpversion status
+    ptr2 <- copyHeaders ptr1 responseHeaders
+    void (copyCRLF ptr2)
   where
     !len = 17 + slen + foldl' fieldLength 0 responseHeaders
     fieldLength !l (!k, !v) = l + S.length (CI.original k) + S.length v + 4

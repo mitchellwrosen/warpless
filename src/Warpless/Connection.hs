@@ -1,13 +1,13 @@
 module Warpless.Connection
   ( Connection,
-    setConnHTTP2,
-    socketConnection,
-    connSend,
-    connSendFile,
-    connRecv,
+    create,
+    close,
+    setIsHttp2,
+    send,
+    sendfile,
+    receive,
     connWriteBuffer,
     connMySockAddr,
-    cleanupConnection,
   )
 where
 
@@ -33,10 +33,6 @@ data Connection = Connection
   { -- | The underlying socket.
     connSock :: !Socket,
     bufferPool :: !BufferPool,
-    -- | The connection closing function. Warp guarantees it will only be
-    -- called once. Other functions (like 'connRecv') may be called after
-    -- 'connClose' is called.
-    connClose :: !(IO ()),
     -- | Reference to a write buffer. When during sending of a 'Builder'
     -- response it's detected the current 'WriteBuffer' is too small it will be
     -- freed and a new bigger buffer will be created and written to this
@@ -47,13 +43,9 @@ data Connection = Connection
     connMySockAddr :: !SockAddr
   }
 
-setConnHTTP2 :: Connection -> IO ()
-setConnHTTP2 conn =
-  writeIORef (connHTTP2 conn) True
-
 -- | Creating 'Connection' for plain HTTP based on a given socket.
-socketConnection :: Network.Socket -> IO Connection
-socketConnection socket = do
+create :: Network.Socket -> IO Connection
+create socket = do
   bufferPool <- Recv.newBufferPool 2048 16384
   connWriteBuffer <- newIORef =<< createWriteBuffer 16384
   isHttp2 <- newIORef False -- HTTP/1.x
@@ -62,40 +54,42 @@ socketConnection socket = do
     Connection
       { connSock = socket,
         bufferPool,
-        connClose =
-          readIORef isHttp2 >>= \case
-            False -> Network.close socket -- doesn't throw
-            True -> ignoringExceptions (Network.gracefulClose socket 2000),
         connWriteBuffer,
         connHTTP2 = isHttp2,
         connMySockAddr = mySockAddr
       }
 
-connSend :: Connection -> ByteString -> IO ()
-connSend Connection {connSock} bytes =
+-- | Clean up a connection. Never throws an exception.
+--
+-- Precondition: called with exceptions uninterruptibly masked.
+close :: Connection -> IO ()
+close Connection {connHTTP2, connSock, connWriteBuffer} = do
+  readIORef connHTTP2 >>= \case
+    False -> Network.close connSock -- doesn't throw
+    True -> ignoringExceptions (Network.gracefulClose connSock 2000)
+  writeBuffer <- readIORef connWriteBuffer
+  freeWriteBuffer writeBuffer
+
+setIsHttp2 :: Connection -> IO ()
+setIsHttp2 conn =
+  writeIORef (connHTTP2 conn) True
+
+send :: Connection -> ByteString -> IO ()
+send Connection {connSock} bytes =
   Sock.sendAll connSock bytes `catch` \(ex :: IOError) ->
     if ioeGetErrorType ex == ResourceVanished
       then throwIO WeirdClient
       else throwIO ex
 
 -- | The sending function for files in HTTP/1.1.
-connSendFile :: Connection -> FilePath -> Integer -> Integer -> IO () -> [ByteString] -> IO ()
-connSendFile Connection {connSock} path off len =
+sendfile :: Connection -> FilePath -> Integer -> Integer -> IO () -> [ByteString] -> IO ()
+sendfile Connection {connSock} path off len =
   sendfileWithHeader connSock path (PartOfFile off len)
 
 -- | The connection receiving function. This returns "" for EOF.
-connRecv :: Connection -> IO ByteString
-connRecv Connection {connSock, bufferPool} =
+receive :: Connection -> IO ByteString
+receive Connection {connSock, bufferPool} =
   Recv.receive connSock bufferPool `catch` \(ex :: IOError) ->
     if ioeGetErrorType ex == InvalidArgument
       then pure ByteString.empty
       else throwIO ex
-
--- | Clean up a connection. Never throws an exception.
---
--- Precondition: called with exceptions uninterruptibly masked.
-cleanupConnection :: Connection -> IO ()
-cleanupConnection Connection {connClose, connWriteBuffer} = do
-  connClose
-  writeBuffer <- readIORef connWriteBuffer
-  freeWriteBuffer writeBuffer

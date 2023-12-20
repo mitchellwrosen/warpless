@@ -18,7 +18,8 @@ import Network.Wai (Application)
 import Network.Wai.Internal (ResponseReceived (..))
 import System.TimeManager qualified as TimeManager
 import UnliftIO qualified
-import Warpless.Connection (Connection (..), connRecv, connSend, setConnHTTP2)
+import Warpless.Connection (Connection, connMySockAddr, connWriteBuffer)
+import Warpless.Connection qualified as Connection
 import Warpless.Date (GMTDate)
 import Warpless.HTTP2.File (pReadMaker)
 import Warpless.HTTP2.PushPromise (fromPushPromises)
@@ -30,7 +31,7 @@ import Warpless.WriteBuffer (WriteBuffer (..))
 http2 :: S.Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> ByteString -> IO ()
 http2 settings getDate conn app peerAddr bs = do
   istatus <- newIORef False
-  rawRecvN <- makeRecvN bs (connRecv conn)
+  rawRecvN <- makeRecvN bs (Connection.receive conn)
   writeBuffer <- readIORef (connWriteBuffer conn)
   UnliftIO.bracket (TimeManager.initialize 30_000_000) TimeManager.stopManager \tm -> do
     -- This thread becomes the sender in http2 library.
@@ -45,14 +46,14 @@ http2 settings getDate conn app peerAddr bs = do
           H2.Config
             { confWriteBuffer = bufBuffer writeBuffer,
               confBufferSize = bufSize writeBuffer,
-              confSendAll = connSend conn,
+              confSendAll = Connection.send conn,
               confReadN = recvN,
               confPositionReadMaker = pReadMaker,
               confTimeoutManager = tm,
               confMySockAddr = connMySockAddr conn,
               confPeerSockAddr = peerAddr
             }
-    setConnHTTP2 conn
+    Connection.setIsHttp2 conn
     H2.run conf $ http2server settings getDate peerAddr app
 
 -- | Converting WAI application to the server type of http2 library.

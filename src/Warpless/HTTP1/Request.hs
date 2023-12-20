@@ -1,5 +1,5 @@
-module Warpless.Request
-  ( recvRequest,
+module Warpless.HTTP1.Request
+  ( receiveRequest,
   )
 where
 
@@ -11,7 +11,7 @@ import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Unsafe qualified as ByteString.Unsafe
 import Data.CaseInsensitive qualified as CI
-import Data.IORef
+import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Vault.Lazy qualified as Vault
 import Data.Word (Word64)
 import Network.HTTP.Types qualified as Http
@@ -19,20 +19,23 @@ import Network.Socket (SockAddr)
 import Network.Wai
 import Network.Wai.Internal (Request (Request))
 import Warpless.Byte qualified as Byte
-import Warpless.Conduit
-import Warpless.Connection (Connection (..), connSend)
+import Warpless.Conduit (mkCSource, readCSource)
+import Warpless.Connection (Connection)
+import Warpless.Connection qualified as Connection
 import Warpless.Header
-import Warpless.ReadInt
+import Warpless.ReadInt (readInt)
 import Warpless.RequestHeader (parseHeaderLines)
 import Warpless.Settings (Settings, settingsNoParsePath)
 import Warpless.Source (Source, leftoverSource, readSource, readSource')
 import Warpless.SourceN qualified as SourceN
-import Warpless.Types
+import Warpless.Types (HeaderValue, WeirdClient (..))
 import Prelude hiding (lines)
 
 -- | Receiving a HTTP request from 'Connection' and parsing its header
 --   to create 'Request'.
-recvRequest ::
+--
+-- Can throw: 'WeirdClient'
+receiveRequest ::
   Settings ->
   Connection ->
   -- | Peer's address.
@@ -48,7 +51,7 @@ recvRequest ::
       IndexedHeader,
       IO ByteString
     )
-recvRequest settings conn addr source = do
+receiveRequest settings conn addr source = do
   hdrlines <- readHeaderLines source
   (method, unparsedPath, query, httpversion, hdr) <- parseHeaderLines hdrlines
   let path = Http.extractPath unparsedPath
@@ -92,6 +95,7 @@ recvRequest settings conn addr source = do
 
 ----------------------------------------------------------------
 
+-- Can throw: 'WeirdClient'
 readHeaderLines :: Source -> IO [ByteString]
 readHeaderLines source = do
   bytes <- readSource source
@@ -104,11 +108,7 @@ readHeaderLines source = do
 handleExpect :: Connection -> Http.HttpVersion -> Maybe HeaderValue -> IO ()
 handleExpect conn ver = \case
   Just "100-continue" -> do
-    let continue :: ByteString
-        continue
-          | ver == Http.http11 = "HTTP/1.1 100 Continue\r\n\r\n"
-          | otherwise = "HTTP/1.0 100 Continue\r\n\r\n"
-    connSend conn continue
+    Connection.send conn if ver == Http.http11 then "HTTP/1.1 100 Continue\r\n\r\n" else "HTTP/1.0 100 Continue\r\n\r\n"
     Concurrent.yield
   _ -> pure ()
 
@@ -117,11 +117,11 @@ handleExpect conn ver = \case
 toLength :: Maybe HeaderValue -> Int
 toLength = \case
   Nothing -> 0
-  Just bs -> readInt bs
+  Just bytes -> readInt bytes
 
 isChunked :: Maybe HeaderValue -> Bool
 isChunked = \case
-  Just bs -> CI.foldCase bs == "chunked"
+  Just bytes -> CI.foldCase bytes == "chunked"
   _ -> False
 
 ----------------------------------------------------------------
