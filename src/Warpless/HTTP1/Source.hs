@@ -1,9 +1,9 @@
-module Warpless.Source
+module Warpless.HTTP1.Source
   ( Source,
-    mkSource,
-    readSource,
-    readSource',
-    leftoverSource,
+    make,
+    read,
+    readIgnoringLeftovers,
+    setLeftovers,
   )
 where
 
@@ -20,14 +20,14 @@ data Source
 --
 -- * Returns one or more bytes, and can be run again.
 -- * Returns zero bytes, indicating that there are no more bytes.
-mkSource :: IO ByteString -> IO Source
-mkSource getBytes = do
+make :: IO ByteString -> IO Source
+make getBytes = do
   ref <- newIORef ByteString.empty
   pure (Source ref getBytes)
 
 -- | Read a chunk of bytes.
-readSource :: Source -> IO ByteString
-readSource (Source ref getBytes) = do
+read :: Source -> IO ByteString
+read (Source ref getBytes) = do
   bytes <- readIORef ref
   if ByteString.null bytes
     then getBytes
@@ -36,10 +36,10 @@ readSource (Source ref getBytes) = do
       pure bytes
 
 -- | Read from a Source, ignoring any leftovers.
-readSource' :: Source -> IO ByteString
-readSource' (Source _ getBytes) =
+readIgnoringLeftovers :: Source -> IO ByteString
+readIgnoringLeftovers (Source _ getBytes) =
   getBytes
 
-leftoverSource :: Source -> ByteString -> IO ()
-leftoverSource (Source ref _) bytes =
+setLeftovers :: Source -> ByteString -> IO ()
+setLeftovers (Source ref _) bytes =
   writeIORef ref bytes

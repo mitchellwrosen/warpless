@@ -61,14 +61,12 @@ parseRequestLine (PS fptr off len) =
         limptr = methodptr `plusPtr` len :: Ptr Word8
 
     pathptr0 <- memchr methodptr 32 (fromIntegral @Int @CSize len) -- ' '
-    when (pathptr0 == nullPtr || (limptr `minusPtr` pathptr0) < 11) do
-      throwIO WeirdClient
+    when (pathptr0 == nullPtr || (limptr `minusPtr` pathptr0) < 11) (throwIO WeirdClient)
     let pathptr = pathptr0 `plusPtr` 1 :: Ptr Word8
         lim1 = limptr `minusPtr` pathptr0
 
     httpptr0 <- memchr pathptr 32 (fromIntegral @Int @CSize lim1) -- ' '
-    when (httpptr0 == nullPtr || (limptr `minusPtr` httpptr0) < 9) do
-      throwIO WeirdClient
+    when (httpptr0 == nullPtr || (limptr `minusPtr` httpptr0) < 9) (throwIO WeirdClient)
     let httpptr = httpptr0 `plusPtr` 1 :: Ptr Word8
         lim2 = httpptr0 `minusPtr` pathptr
 

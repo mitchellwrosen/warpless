@@ -16,53 +16,25 @@ import Warpless.Connection qualified as Connection
 import Warpless.Date (GMTDate)
 import Warpless.HTTP1.Request (receiveRequest)
 import Warpless.HTTP1.Response (sendResponse)
+import Warpless.HTTP1.Source (Source)
+import Warpless.HTTP1.Source qualified as Source
 import Warpless.Prelude
 import Warpless.Settings (Settings (settingsOnException), defaultOnExceptionResponse)
-import Warpless.Source (Source, leftoverSource, mkSource, readSource)
-import Warpless.Types (WeirdClient)
 
 http1 :: Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> ByteString -> IO ()
-http1 settings getDate conn app addr bytes0 = do
-  -- Keep track of whether we "should respond" to the client at all, at any given time:
-  --
-  --   - Whenever we receive any bytes on the client connection, we set this to true.
-  --   - Whenever we send a response to the client, we set this to false.
-  --
-  -- (Remember, one client connection can be reused for more than one request). Thus, whenever we hit an exception and
-  -- end up asking ourselves, "should I tell the client about this (by way of 500 Internal Server Error)?", we query
-  -- this boolean.
-  shouldRespondRef <- newIORef True
-
-  -- Create a source of bytes from the client's connection that sets `shouldRespond` per the description above.
-  source <-
-    mkSource do
-      bytes <- Connection.receive conn
-      when (not (ByteString.null bytes)) (writeIORef shouldRespondRef True)
-      pure bytes
+http1 settings getDate conn application addr bytes0 = do
+  -- Create a source of bytes from the client's connection.
+  source <- Source.make (Connection.receive conn)
 
   -- We already read one chunk of bytes to determine if this was an HTTP2 request. It wasn't. Put those bytes back at
   -- the front of the source, for us to read next.
-  leftoverSource source bytes0
+  Source.setLeftovers source bytes0
 
   let loop :: IO ()
       loop = do
-        try @WeirdClient (receiveRequest settings conn addr source) >>= \case
-          -- A "weird client" exception means the client did something weird or wrong, like sent us some garbage
-          -- request, or closed its end of the connection. We just ignore those, and do not dignify the client with a
-          -- response. Again, it may have closed its connection, anyway.
-          Left _ -> pure ()
-          -- We got a request!
-          Right (request, commonHeaders, nextBodyFlush) -> do
-            keepAlive <-
-              processRequest settings getDate conn app shouldRespondRef source request commonHeaders nextBodyFlush
-                `catch` \exception ->
-                  case exception of
-                    AnyAsyncException -> throwIO exception
-                    AnyWeirdClient -> pure False
-                    _ -> do
-                      settingsOnException settings (Just request) exception
-                      pure False
-            when keepAlive loop
+        (request, commonHeaders, getBodyChunk) <- receiveRequest settings conn addr source
+        keepAlive <- processRequest settings getDate conn application source request commonHeaders getBodyChunk
+        when keepAlive loop
   loop
 
 processRequest ::
@@ -70,20 +42,19 @@ processRequest ::
   IO GMTDate ->
   Connection ->
   Application ->
-  IORef Bool ->
   Source ->
   Request ->
   CommonRequestHeaders ->
   IO ByteString ->
   IO Bool
-processRequest settings getDate conn app shouldRespondRef source request idxhdr nextBodyFlush = do
+processRequest settings getDate conn application source request commonRequestHeaders getBodyChunk = do
   keepAliveRef <- newIORef False
 
+  -- FIXME don't allow async exception to strike after sendResponse (we want to accurately send-or-not-send error resp)
   result <-
     UnliftIO.tryAny do
-      app request \response -> do
-        writeIORef shouldRespondRef False
-        keepAlive <- sendResponse conn getDate request idxhdr (readSource source) response
+      application request \response -> do
+        keepAlive <- sendResponse conn getDate request commonRequestHeaders (Source.read source) response
         writeIORef keepAliveRef keepAlive
         pure ResponseReceived
 
@@ -92,10 +63,7 @@ processRequest settings getDate conn app shouldRespondRef source request idxhdr 
       Right ResponseReceived -> readIORef keepAliveRef
       Left exception -> do
         settingsOnException settings (Just request) exception
-        shouldRespond <- readIORef shouldRespondRef
-        if shouldRespond
-          then sendResponse conn getDate request CommonRequestHeaders.empty (pure ByteString.empty) defaultOnExceptionResponse
-          else pure False
+        sendResponse conn getDate request CommonRequestHeaders.empty (pure ByteString.empty) defaultOnExceptionResponse
 
   -- We just send a Response and it takes a time to
   -- receive a Request again. If we immediately call recv,
@@ -107,20 +75,12 @@ processRequest settings getDate conn app shouldRespondRef source request idxhdr 
   -- the number of cores is small.
   Conc.yield
 
-  when keepAlive (flushEntireBody nextBodyFlush)
+  -- If we are reusing this connection for another request, then first flush away all of the request body that (for
+  -- whatever reason) was not read by the application).
+  when keepAlive do
+    let loop = do
+          bytes <- getBodyChunk
+          when (not (ByteString.null bytes)) loop
+    loop
 
   pure keepAlive
-
-flushEntireBody :: IO ByteString -> IO ()
-flushEntireBody source =
-  loop
-  where
-    loop = do
-      bytes <- source
-      when (not (ByteString.null bytes)) loop
-
-pattern AnyAsyncException :: SomeException
-pattern AnyAsyncException <- (fromException @SomeAsyncException -> Just _)
-
-pattern AnyWeirdClient :: SomeException
-pattern AnyWeirdClient <- (fromException @WeirdClient -> Just _)

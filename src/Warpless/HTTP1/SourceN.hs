@@ -1,17 +1,14 @@
-module Warpless.SourceN
+module Warpless.HTTP1.SourceN
   ( new,
     read,
   )
 where
 
-import Control.Exception (throwIO)
-import Control.Monad
-import Data.ByteString (ByteString)
 import Data.ByteString qualified as ByteString
-import Data.IORef (IORef, newIORef, readIORef, writeIORef)
-import Warpless.Source (Source, leftoverSource, readSource)
+import Warpless.HTTP1.Source (Source)
+import Warpless.HTTP1.Source qualified as Source
+import Warpless.Prelude
 import Warpless.Types (WeirdClient (..))
-import Prelude hiding (read)
 
 data SourceN
   = SourceN
@@ -28,7 +25,7 @@ read (SourceN source remainingRef) = do
   readIORef remainingRef >>= \case
     0 -> pure ByteString.empty
     remaining_ -> do
-      bytes <- readSource source
+      bytes <- Source.read source
       when (ByteString.null bytes) (throwIO WeirdClient)
       let count = min remaining_ (ByteString.length bytes)
       let nextRemaining = remaining_ - count
@@ -37,5 +34,5 @@ read (SourceN source remainingRef) = do
         then pure bytes
         else do
           let (bytes1, leftovers) = ByteString.splitAt count bytes
-          leftoverSource source leftovers
+          Source.setLeftovers source leftovers
           pure bytes1

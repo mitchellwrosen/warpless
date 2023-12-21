@@ -21,6 +21,7 @@ import Warpless.HTTP1 (http1)
 import Warpless.HTTP2 (http2)
 import Warpless.Prelude
 import Warpless.Settings (Settings, settingsHost, settingsPort)
+import Warpless.Types (WeirdClient (WeirdClient))
 
 run :: Settings -> Application -> IO ()
 run settings app =
@@ -69,7 +70,14 @@ run1 settings app serverSocket = do
         -- Fork a thread (in this scope) to handle the client, with asynchronous exceptions uninterruptibly masked.
         -- The client thread is meant to arrange so that by the time asynchronous exceptions are allowed again, an
         -- exception handler is installed to close the client socket.
-        void (Ki.forkWith @() scope clientThreadOptions (handleClient settings app getDate clientSocket clientAddr))
+        --
+        -- The one exception we allow to propagate all the way up here is the distinguished WeirdClient exception,
+        -- which means the client did something wrong or weird, not us. We don't want that to bring down the server.
+        -- So, we catch it here (so that it does not propagate to the main thread) and ignore it. Badly-written clients
+        -- that may *think* they are speaking a dialogue of HTTP we can understand will just be ignored.
+        void do
+          Ki.forkWith @() scope clientThreadOptions do
+            handleClient settings app getDate clientSocket clientAddr `catch` \WeirdClient -> pure ()
   where
     clientThreadOptions :: Ki.ThreadOptions
     clientThreadOptions =

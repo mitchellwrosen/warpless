@@ -67,15 +67,17 @@ Library
     Warpless.ByteString
     Warpless.CommonRequestHeaders
     Warpless.CommonResponseHeaders
-    Warpless.Conduit
     Warpless.Connection
     Warpless.Date
     Warpless.Exception
     Warpless.File
     Warpless.FileInfo
     Warpless.HTTP1
+    Warpless.HTTP1.ChunkedSource
     Warpless.HTTP1.Request
     Warpless.HTTP1.Response
+    Warpless.HTTP1.Source
+    Warpless.HTTP1.SourceN
     Warpless.HTTP2
     Warpless.HTTP2.File
     Warpless.HTTP2.PushPromise
@@ -88,8 +90,6 @@ Library
     Warpless.ResponseHeader
     Warpless.Run
     Warpless.Settings
-    Warpless.Source
-    Warpless.SourceN
     Warpless.Types
     Warpless.WriteBuffer
   ghc-options:

@@ -4,7 +4,6 @@ module Warpless.CommonRequestHeaders
     make,
     getConnection,
     getContentLength,
-    getExpect,
     getHost,
     getIfMatch,
     getIfModifiedSince,
@@ -13,9 +12,9 @@ module Warpless.CommonRequestHeaders
     getIfUnmodifiedSince,
     getRange,
     getReferer,
-    getTransferEncoding,
     getUserAgent,
     hasChunkedTransferEncoding,
+    hasExpect100Continue,
   )
 where
 
@@ -25,7 +24,7 @@ import Data.Array.ST (MArray (newArray), STArray, runSTArray, writeArray)
 import Data.ByteString qualified as ByteString
 import Data.CaseInsensitive (foldedCase)
 import Data.CaseInsensitive qualified as CaseInsensitive
-import GHC.Enum (Bounded, Enum, maxBound, fromEnum)
+import GHC.Enum (Bounded, Enum, fromEnum, maxBound)
 import Network.HTTP.Date (HTTPDate, parseHTTPDate)
 import Network.HTTP.Types (Header, HeaderName, RequestHeaders)
 import Warpless.Prelude
@@ -157,4 +156,10 @@ hasChunkedTransferEncoding :: CommonRequestHeaders -> Bool
 hasChunkedTransferEncoding headers =
   case getTransferEncoding headers of
     Just encoding -> CaseInsensitive.foldCase encoding == "chunked"
+    _ -> False
+
+hasExpect100Continue :: CommonRequestHeaders -> Bool
+hasExpect100Continue headers =
+  case getExpect headers of
+    Just "100-continue" -> True
     _ -> False
