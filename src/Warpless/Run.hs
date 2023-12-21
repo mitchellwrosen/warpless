@@ -67,9 +67,9 @@ run1 settings app serverSocket = do
         -- Accept a client!
         (clientSocket, clientAddr) <- Network.accept serverSocket
 
-        -- Fork a thread (in this scope) to handle the client, with asynchronous exceptions uninterruptibly masked.
-        -- The client thread is meant to arrange so that by the time asynchronous exceptions are allowed again, an
-        -- exception handler is installed to close the client socket.
+        -- Fork a thread to handle the client, with asynchronous exceptions uninterruptibly masked. The client thread is
+        -- meant to arrange so that by the time asynchronous exceptions are allowed again, an exception handler is
+        -- installed to close the client socket.
         --
         -- The one exception we allow to propagate all the way up here is the distinguished WeirdClient exception,
         -- which means the client did something wrong or weird, not us. We don't want that to bring down the server.
@@ -98,7 +98,12 @@ handleClient settings app getDate socket addr = do
   -- uninterruptibly masked, so we need not waste (hardly any) time masking them again.
   (`onException` Connection.close conn) do
     unsafeUnmask do
-      -- fixme: Upgrading to HTTP/2 should be supported.
+      -- Read a bit of from the client to determine if this is an HTTP/1 or HTTP/2 request.
+      --
+      -- Oops! This code is slightly bogusoid because we (of course) aren't guaranteed to get a 4-byte read. That bug
+      -- is present in `warp`, let's fix it there and port the fix over here.
+      --
+      -- FIXME: support upgrading to HTTP/2
       bytes <- Connection.receive conn
       if ByteString.length bytes >= 4 && "PRI " `ByteString.isPrefixOf` bytes
         then http2 settings getDate conn app addr bytes
