@@ -92,20 +92,22 @@ handleClient settings app getDate socket addr = do
   -- Wrap the socket in a connection object. This never throws an exception.
   conn <- Connection.create socket
 
-  -- Guaranteeing that `Connection.cose conn` will be called, unmask asynchronous exceptions and handle the client!
+  -- Let-bind a helper that runs the given action and closes the connection afterwards, no matter what.
   --
-  -- N.B. we choose not to use the `finally` combinator only because we know asynchronous exceptions are already
-  -- uninterruptibly masked, so we need not waste (hardly any) time masking them again.
-  (`onException` Connection.close conn) do
-    unsafeUnmask do
-      -- Read a bit of from the client to determine if this is an HTTP/1 or HTTP/2 request.
-      --
-      -- Oops! This code is slightly bogusoid because we (of course) aren't guaranteed to get a 4-byte read. That bug
-      -- is present in `warp`, let's fix it there and port the fix over here.
-      --
-      -- FIXME: support upgrading to HTTP/2
-      bytes <- Connection.receive conn
-      if ByteString.length bytes >= 4 && "PRI " `ByteString.isPrefixOf` bytes
-        then http2 settings getDate conn app addr bytes
-        else http1 settings getDate conn app addr bytes
-  Connection.close conn
+  -- N.B. this is just `finally`, but tweaked because asynchronous exceptions are already uninterruptibly masked.
+  let closingConnection :: IO () -> IO ()
+      closingConnection action = do
+        unsafeUnmask action `onException` Connection.close conn
+        Connection.close conn
+
+  closingConnection do
+    -- Read a bit of from the client to determine if this is an HTTP/1 or HTTP/2 request, then handle the client!
+    --
+    -- ...Oops! This code is slightly bogusoid because we (of course) aren't guaranteed to get a 4-byte read. That bug
+    -- is present in `warp`, let's fix it there and port the fix over here.
+    --
+    -- FIXME: support upgrading to HTTP/2
+    bytes <- Connection.receive conn
+    if ByteString.length bytes >= 4 && "PRI " `ByteString.isPrefixOf` bytes
+      then http2 settings getDate conn app addr bytes
+      else http1 settings getDate conn app addr bytes

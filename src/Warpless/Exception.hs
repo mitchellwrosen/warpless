@@ -1,6 +1,7 @@
 -- | Exception utils.
 module Warpless.Exception
   ( ignoringExceptions,
+    isSyncException,
   )
 where
 
@@ -13,3 +14,8 @@ ignoringExceptions action =
       Nothing -> pure ()
       Just _ -> throwIO exception
 {-# INLINE ignoringExceptions #-}
+
+isSyncException :: SomeException -> Bool
+isSyncException =
+  isNothing . fromException @SomeAsyncException
+{-# INLINE isSyncException #-}
