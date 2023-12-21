@@ -31,7 +31,7 @@ import Warpless.CommonRequestHeaders (CommonRequestHeaders)
 import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
 import Warpless.CommonResponseHeaders (CommonResponseHeaders)
 import Warpless.CommonResponseHeaders qualified as CommonResponseHeaders
-import Warpless.Connection (Connection, connWriteBuffer)
+import Warpless.Connection (Connection)
 import Warpless.Connection qualified as Connection
 import Warpless.Date qualified as D
 import Warpless.File (RspFileInfo (..), addContentHeadersForFilePart, conditionalRequest)
@@ -184,13 +184,12 @@ sendRspBuilder conn ver status headers body needsChunked = do
               <> chunkedTransferEncoding body
               <> chunkedTransferTerminator
         | otherwise = header <> body
-      writeBufferRef = connWriteBuffer conn
-  toBufIOWith writeBufferRef (Connection.send conn) hdrBdy
+  toBufIOWith (Connection.writeBufferRef conn) (Connection.send conn) hdrBdy
 
 sendRspStream :: Connection -> H.HttpVersion -> H.Status -> H.ResponseHeaders -> ((Builder -> IO ()) -> IO () -> IO ()) -> Bool -> IO ()
 sendRspStream conn ver status headers streamingBody needsChunked = do
   header <- composeHeaderBuilder ver status headers needsChunked
-  writeBuffer <- readIORef (connWriteBuffer conn)
+  writeBuffer <- readIORef (Connection.writeBufferRef conn)
   (recv, finish) <- newByteStringBuilderRecv (reuseBufferStrategy (toBuilderBuffer writeBuffer))
   let send builder = do
         popper <- recv builder

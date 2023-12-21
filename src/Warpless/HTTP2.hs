@@ -5,7 +5,6 @@ module Warpless.HTTP2
   )
 where
 
-import Data.ByteString qualified as ByteString
 import Data.IORef qualified as I
 import Network.HTTP2.Server qualified as H2
 import Network.Socket (SockAddr)
@@ -14,10 +13,9 @@ import Network.Wai (Application)
 import Network.Wai.Internal (ResponseReceived (..))
 import System.TimeManager qualified as TimeManager
 import UnliftIO qualified
-import Warpless.Connection (Connection, connMySockAddr, connWriteBuffer)
+import Warpless.Connection (Connection)
 import Warpless.Connection qualified as Connection
 import Warpless.Date (GMTDate)
-import Warpless.Exception (isSyncException)
 import Warpless.HTTP2.File (pReadMaker)
 import Warpless.HTTP2.PushPromise (fromPushPromises)
 import Warpless.HTTP2.Request (toRequest)
@@ -29,22 +27,17 @@ import Warpless.WriteBuffer (WriteBuffer (..))
 http2 :: S.Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> ByteString -> IO ()
 http2 settings getDate conn app peerAddr bs = do
   recvN <- makeRecvN bs (Connection.receive conn)
-  writeBuffer <- readIORef (connWriteBuffer conn)
+  writeBuffer <- readIORef (Connection.writeBufferRef conn)
   UnliftIO.bracket (TimeManager.initialize 30_000_000) TimeManager.stopManager \tm -> do
     let conf =
           H2.Config
             { confWriteBuffer = bufBuffer writeBuffer,
               confBufferSize = bufSize writeBuffer,
               confSendAll = Connection.send conn,
-              confReadN =
-                \bufsize ->
-                  recvN bufsize `catch` \exception ->
-                    if isSyncException exception
-                      then pure ByteString.empty
-                      else throwIO exception,
+              confReadN = recvN,
               confPositionReadMaker = pReadMaker,
               confTimeoutManager = tm,
-              confMySockAddr = connMySockAddr conn,
+              confMySockAddr = Connection.socketAddr conn,
               confPeerSockAddr = peerAddr
             }
     Connection.setIsHttp2 conn
