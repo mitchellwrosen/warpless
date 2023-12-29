@@ -40,7 +40,6 @@ Library
     recv ^>= 0.1.0,
     simple-sendfile >= 0.2.7 && < 0.3,
     streaming-commons >= 0.1.10,
-    text,
     time-manager,
     unix ^>= 2.8.0,
     vault >= 0.3,

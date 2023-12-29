@@ -40,10 +40,6 @@ module Warpless
     Settings (..),
     defaultSettings,
 
-    -- ** Exception handler
-    defaultOnException,
-    defaultShouldDisplayException,
-
     -- ** Exception response handler
     defaultOnExceptionResponse,
 
@@ -81,21 +77,10 @@ import Warpless.FileInfo (FileInfo (..), getFileInfo)
 import Warpless.HTTP2.Request (getHTTP2Data, modifyHTTP2Data, setHTTP2Data)
 import Warpless.HTTP2.Types
   ( HTTP2Data (http2dataPushPromise, http2dataTrailers),
-    PushPromise
-      ( promisedFile,
-        promisedPath,
-        promisedResponseHeaders,
-        promisedWeight
-      ),
+    PushPromise (promisedFile, promisedPath, promisedResponseHeaders, promisedWeight),
     defaultHTTP2Data,
     defaultPushPromise,
   )
 import Warpless.Run (run)
-import Warpless.Settings
-  ( Settings (..),
-    defaultOnException,
-    defaultOnExceptionResponse,
-    defaultSettings,
-    defaultShouldDisplayException,
-  )
+import Warpless.Settings (Settings (..), defaultOnExceptionResponse, defaultSettings)
 import Warpless.Types (Port)

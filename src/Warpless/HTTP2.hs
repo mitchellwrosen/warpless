@@ -63,7 +63,7 @@ http2server settings getDate addr app h2req0 _aux0 response = do
       Just pps <- I.readIORef ref
       traverse_ (logPushPromise req) pps
     Left e -> do
-      S.settingsOnException settings (Just req) e
+      S.settingsOnException settings e
       let ersp = S.defaultOnExceptionResponse
       (h2rsp', _) <- fromResponse getDate req ersp
       response h2rsp' []
