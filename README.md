@@ -17,3 +17,4 @@ Latest commit porked over: `152f9b143725ba1f878e159a32d04aa4b7c382a4`.
 - No control over preventing allocating too large of a response.
 - No automatic setting of the `Alt-Svc` response header: you can just set it yourself in a response.
 - `Expect: 100-continue` is eagerly replied to, rather than lazily upon trying to read the request body.
+- Uncaught exceptions are ignored by default, rather than printed to stderr.
