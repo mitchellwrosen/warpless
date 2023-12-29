@@ -50,7 +50,6 @@ processRequest ::
 processRequest settings getDate conn application source request commonRequestHeaders getBodyChunk = do
   keepAliveRef <- newIORef False
 
-  -- FIXME don't allow async exception to strike after sendResponse (we want to accurately send-or-not-send error resp)
   result <-
     UnliftIO.tryAny do
       application request \response -> do
@@ -62,8 +61,16 @@ processRequest settings getDate conn application source request commonRequestHea
     case result of
       Right ResponseReceived -> readIORef keepAliveRef
       Left exception -> do
-        settingsOnException settings (Just request) exception
-        sendResponse conn getDate request CommonRequestHeaders.empty (pure ByteString.empty) defaultOnExceptionResponse
+        settingsOnException settings exception
+        _ <-
+          sendResponse
+            conn
+            getDate
+            request
+            CommonRequestHeaders.empty
+            (pure ByteString.empty)
+            defaultOnExceptionResponse
+        pure False
 
   -- We just send a Response and it takes a time to
   -- receive a Request again. If we immediately call recv,
