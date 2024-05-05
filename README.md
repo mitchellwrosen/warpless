@@ -3,7 +3,7 @@
 A slim `warp` fork.
 
 Last synchronized with `warp` May 5, 2024.
-Latest commit ported over: `b672a02b5c518089e58f36e7e5f26533a9e18915`.
+Latest commit ported over: `2a7399f5229f6a8ea675a20cf0cf8f69ba8b9f72`.
 
 ## Changes
 
