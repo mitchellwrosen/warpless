@@ -8,7 +8,6 @@ import Data.ByteString qualified as ByteString
 import Warpless.HTTP1.Source (Source)
 import Warpless.HTTP1.Source qualified as Source
 import Warpless.Prelude
-import Warpless.Types (WeirdClient (..))
 
 data SourceN
   = SourceN
@@ -25,8 +24,7 @@ read (SourceN source remainingRef) = do
   readIORef remainingRef >>= \case
     0 -> pure ByteString.empty
     remaining_ -> do
-      bytes <- Source.read source
-      when (ByteString.null bytes) (throwIO WeirdClient)
+      bytes <- Source.read1 source
       let count = min remaining_ (ByteString.length bytes)
       let nextRemaining = remaining_ - count
       writeIORef remainingRef nextRemaining

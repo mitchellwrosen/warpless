@@ -7,7 +7,7 @@ import Control.Concurrent qualified as Concurrent (yield)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Builder qualified as ByteString.Builder
 import Data.ByteString.Lazy qualified as ByteString.Lazy
-import Data.ByteString.Unsafe qualified as ByteString.Unsafe
+import Data.ByteString.Unsafe qualified as ByteString (unsafeDrop, unsafeHead, unsafeIndex, unsafeLast, unsafeTake)
 import Data.Vault.Lazy qualified as Vault
 import GHC.Real (fromIntegral)
 import Network.HTTP.Types qualified as Http
@@ -27,11 +27,12 @@ import Warpless.HTTP1.SourceN qualified as SourceN
 import Warpless.Prelude
 import Warpless.RequestHeader (parseHeaderLines)
 import Warpless.Settings (Settings, settingsNoParsePath)
-import Warpless.Types (WeirdClient (..))
 
 receiveRequest :: Settings -> Connection -> SockAddr -> Source -> IO (Request, CommonRequestHeaders, IO ByteString)
 receiveRequest settings conn remoteHost source = do
-  headerLines <- readHeaderLines source
+  headerLines <- do
+    bytes <- Source.read1 source
+    push source (THStatus 0 0 id id) bytes
 
   (method, unparsedPath, rawQueryString, httpVersion, requestHeaders) <- parseHeaderLines headerLines
 
@@ -77,14 +78,6 @@ receiveRequest settings conn remoteHost source = do
 
 ----------------------------------------------------------------
 
-readHeaderLines :: Source -> IO [ByteString]
-readHeaderLines source = do
-  bytes <- Source.read source
-  when (ByteString.null bytes) (throwIO WeirdClient)
-  push source (THStatus 0 0 id id) bytes
-
-----------------------------------------------------------------
-
 data THStatus
   = THStatus
       {-# UNPACK #-} !Int -- running total byte count (excluding current header chunk)
@@ -95,75 +88,67 @@ data THStatus
 ----------------------------------------------------------------
 
 push :: Source -> THStatus -> ByteString -> IO [ByteString]
-push src (THStatus totalLen chunkLen reqLines prepend) bs =
-  case ByteString.elemIndex Byte.lf bs of
+push source (THStatus totalLen chunkLen reqLines prepend) bytes0 =
+  case ByteString.elemIndex Byte.lf bytes0 of
     -- No newline found
-    Nothing -> withNewChunk noNewlineFound
-    -- Newline found at index 'ix'
-    Just ix -> newlineFound ix
-  where
-    bsLen = ByteString.length bs
-    currentTotal = totalLen + chunkLen
-    {-# INLINE withNewChunk #-}
-    withNewChunk :: (ByteString -> IO a) -> IO a
-    withNewChunk f = do
-      newChunk <- Source.readIgnoringLeftovers src
-      when (ByteString.null newChunk) $ throwIO WeirdClient
-      f newChunk
-    {-# INLINE noNewlineFound #-}
-    noNewlineFound newChunk
+    Nothing -> do
+      bytes1 <- Source.readIgnoringLeftovers1 source
       -- The chunk split the CRLF in half
-      | ByteString.Unsafe.unsafeLast bs == Byte.cr && ByteString.head newChunk == Byte.lf =
-          let bs' = ByteString.Unsafe.unsafeDrop 1 newChunk
-           in if bsLen == 1 && chunkLen == 0
-                then -- first part is only CRLF, we're done
-                do
-                  when (not $ ByteString.null bs') $ Source.setLeftovers src bs'
-                  pure $ reqLines []
-                else do
-                  rest <-
-                    if ByteString.length newChunk == 1
-                      then -- new chunk is only LF, we need more to check for multiline
-                        withNewChunk pure
-                      else pure bs'
-                  let status = addLine (bsLen + 1) (ByteString.Unsafe.unsafeTake (bsLen - 1) bs)
-                  push src status rest
-      -- chunk and keep going
-      | otherwise = do
-          let newChunkTotal = chunkLen + bsLen
-              newPrepend = prepend . (ByteString.Builder.byteString bs <>)
-              status = THStatus totalLen newChunkTotal reqLines newPrepend
-          push src status newChunk
-    {-# INLINE newlineFound #-}
-    newlineFound ix
-      -- Is end of headers
-      | startsWithLF && chunkLen == 0 = do
-          let rest = ByteString.Unsafe.unsafeDrop end bs
-          when (not $ ByteString.null rest) $ Source.setLeftovers src rest
-          pure $ reqLines []
-      | otherwise = do
+      case ByteString.unsafeLast bytes0 == Byte.cr && ByteString.head bytes1 == Byte.lf of
+        True -> do
+          let bytes2 = ByteString.unsafeDrop 1 bytes1
+          case len0 == 1 && chunkLen == 0 of
+            -- first part is only CRLF, we're done
+            True -> done bytes2
+            False -> do
+              let status = addLine (len0 + 1) (ByteString.unsafeTake (len0 - 1) bytes0)
+              -- if new chunk is only LF, we need more to check for multiline
+              bytes3 <- if ByteString.length bytes1 == 1 then Source.readIgnoringLeftovers1 source else pure bytes2
+              push source status bytes3
+        -- chunk and keep going
+        False -> do
+          let prepend1 = prepend . (ByteString.Builder.byteString bytes0 <>)
+              status = THStatus totalLen (chunkLen + len0) reqLines prepend1
+          push source status bytes1
+    -- Newline found at index 'ix'
+    Just ix -> do
+      let bytes1 = ByteString.unsafeDrop end bytes0
+      case startsWithLF && chunkLen == 0 of
+        -- Is end of headers
+        True -> done bytes1
+        False -> do
           -- LF is on last byte
-          rest <-
-            if end == bsLen
-              then -- we need more chunks to check for whitespace
-                withNewChunk pure
-              else pure $ ByteString.Unsafe.unsafeDrop end bs
+          bytes2 <-
+            case end == len0 of
+              -- we need more chunks to check for whitespace
+              True -> Source.readIgnoringLeftovers1 source
+              False -> pure bytes1
           let p = ix - 1
-              chunk =
-                if ix > 0 && ByteString.Unsafe.unsafeIndex bs p == Byte.cr then p else ix
-              status = addLine end (ByteString.Unsafe.unsafeTake chunk bs)
-          push src status rest
+              chunk = if ix > 0 && ByteString.unsafeIndex bytes0 p == Byte.cr then p else ix
+              status = addLine end (ByteString.unsafeTake chunk bytes0)
+          push source status bytes2
       where
         end = ix + 1
         startsWithLF =
           case ix of
             0 -> True
-            1 -> ByteString.Unsafe.unsafeHead bs == Byte.cr
+            1 -> ByteString.unsafeHead bytes0 == Byte.cr
             _ -> False
+  where
+    len0 :: Int
+    len0 =
+      ByteString.length bytes0
+
+    done :: ByteString -> IO [ByteString]
+    done bytes = do
+      Source.maybeSetLeftovers source bytes
+      pure (reqLines [])
+
     -- addLine: take the current chunk and, if there's nothing to prepend,
     -- add straight to 'reqLines', otherwise first prepend then add.
+    addLine :: Int -> ByteString -> THStatus
     addLine len chunk =
-      let newTotal = currentTotal + len
+      let newTotal = totalLen + chunkLen + len
           toBS = ByteString.Lazy.toStrict . ByteString.Builder.toLazyByteString
           newLine =
             if chunkLen == 0 then chunk else toBS $ prepend $ ByteString.Builder.byteString chunk

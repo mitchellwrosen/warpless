@@ -2,13 +2,17 @@ module Warpless.HTTP1.Source
   ( Source,
     make,
     read,
+    read1,
     readIgnoringLeftovers,
+    readIgnoringLeftovers1,
     setLeftovers,
+    maybeSetLeftovers,
   )
 where
 
 import Data.ByteString qualified as ByteString
 import Warpless.Prelude
+import Warpless.Types (WeirdClient (..))
 
 -- | A source of bytes.
 data Source
@@ -35,11 +39,31 @@ read (Source ref getBytes) = do
       writeIORef ref ByteString.empty
       pure bytes
 
--- | Read from a Source, ignoring any leftovers.
+-- | Read a chunk of bytes, expecting at least one byte.
+read1 :: Source -> IO ByteString
+read1 source = do
+  bytes <- read source
+  when (ByteString.null bytes) (throwIO WeirdClient)
+  pure bytes
+
+-- | Read a chunk of bytes, ignoring any leftovers.
 readIgnoringLeftovers :: Source -> IO ByteString
 readIgnoringLeftovers (Source _ getBytes) =
   getBytes
 
+-- | Read a chunk of bytes, ignoring any leftovers, expecting at least one byte.
+readIgnoringLeftovers1 :: Source -> IO ByteString
+readIgnoringLeftovers1 source = do
+  bytes <- readIgnoringLeftovers source
+  when (ByteString.null bytes) (throwIO WeirdClient)
+  pure bytes
+
 setLeftovers :: Source -> ByteString -> IO ()
 setLeftovers (Source ref _) bytes =
   writeIORef ref bytes
+
+-- | Set leftovers, unless the bytes are empty.
+maybeSetLeftovers :: Source -> ByteString -> IO ()
+maybeSetLeftovers source bytes
+  | ByteString.null bytes = pure ()
+  | otherwise = setLeftovers source bytes
