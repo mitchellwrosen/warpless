@@ -5,8 +5,6 @@ where
 
 import Control.Concurrent qualified as Concurrent (yield)
 import Data.ByteString qualified as ByteString
-import Data.ByteString.Builder qualified as ByteString.Builder
-import Data.ByteString.Lazy qualified as ByteString.Lazy
 import Data.ByteString.Unsafe qualified as ByteString (unsafeDrop, unsafeHead, unsafeIndex, unsafeLast, unsafeTake)
 import Data.Vault.Lazy qualified as Vault
 import GHC.Real (fromIntegral)
@@ -83,7 +81,7 @@ data THStatus
       {-# UNPACK #-} !Int -- running total byte count (excluding current header chunk)
       {-# UNPACK #-} !Int -- current header chunk byte count
       !([ByteString] -> [ByteString]) -- previously parsed lines
-      !(ByteString.Builder.Builder -> ByteString.Builder.Builder) -- bytestrings to be prepended
+      !(ByteString -> ByteString) -- bytestrings to be prepended
 
 ----------------------------------------------------------------
 
@@ -107,26 +105,23 @@ push source (THStatus totalLen chunkLen reqLines prepend) bytes0 =
               push source status bytes3
         -- chunk and keep going
         False -> do
-          let prepend1 = prepend . (ByteString.Builder.byteString bytes0 <>)
+          let prepend1 = prepend . (bytes0 <>)
               status = THStatus totalLen (chunkLen + len0) reqLines prepend1
           push source status bytes1
     -- Newline found at index 'ix'
     Just ix -> do
       let bytes1 = ByteString.unsafeDrop end bytes0
-      case startsWithLF && chunkLen == 0 of
+      case chunkLen == 0 && startsWithLF of
         -- Is end of headers
         True -> done bytes1
         False -> do
           -- LF is on last byte
-          bytes2 <-
-            case end == len0 of
-              -- we need more chunks to check for whitespace
-              True -> Source.readIgnoringLeftovers1 source
-              False -> pure bytes1
           let p = ix - 1
               chunk = if ix > 0 && ByteString.unsafeIndex bytes0 p == Byte.cr then p else ix
               status = addLine end (ByteString.unsafeTake chunk bytes0)
-          push source status bytes2
+          if end == len0
+            then Source.readIgnoringLeftovers1 source >>= push source status
+            else push source status bytes1
       where
         end = ix + 1
         startsWithLF =
@@ -146,10 +141,9 @@ push source (THStatus totalLen chunkLen reqLines prepend) bytes0 =
 
     -- addLine: take the current chunk and, if there's nothing to prepend,
     -- add straight to 'reqLines', otherwise first prepend then add.
+    {-# INLINE addLine #-}
     addLine :: Int -> ByteString -> THStatus
     addLine len chunk =
       let newTotal = totalLen + chunkLen + len
-          toBS = ByteString.Lazy.toStrict . ByteString.Builder.toLazyByteString
-          newLine =
-            if chunkLen == 0 then chunk else toBS $ prepend $ ByteString.Builder.byteString chunk
+          newLine = if chunkLen == 0 then chunk else prepend chunk
        in THStatus newTotal 0 (reqLines . (newLine :)) id
