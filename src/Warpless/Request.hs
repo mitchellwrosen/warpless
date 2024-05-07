@@ -1,4 +1,4 @@
-module Warpless.HTTP1.Request
+module Warpless.Request
   ( receiveRequest,
   )
 where
@@ -14,27 +14,26 @@ import Network.Wai (RequestBodyLength (ChunkedBody, KnownLength))
 import Network.Wai.Internal (Request (..))
 import Warpless.Byte qualified as Byte
 import Warpless.ByteString qualified as ByteString
+import Warpless.ChunkedSource qualified as ChunkedSource
 import Warpless.CommonRequestHeaders (CommonRequestHeaders)
 import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
 import Warpless.Connection (Connection)
 import Warpless.Connection qualified as Connection
-import Warpless.HTTP1.ChunkedSource qualified as ChunkedSource
-import Warpless.HTTP1.Source (Source)
-import Warpless.HTTP1.Source qualified as Source
-import Warpless.HTTP1.SourceN qualified as SourceN
 import Warpless.Prelude
 import Warpless.RequestHeader (parseHeaderLines)
-import Warpless.Settings (Settings, settingsNoParsePath)
+import Warpless.Source (Source)
+import Warpless.Source qualified as Source
+import Warpless.SourceN qualified as SourceN
 
-receiveRequest :: Settings -> Connection -> SockAddr -> Source -> IO (Request, CommonRequestHeaders, IO ByteString)
-receiveRequest settings conn remoteHost source = do
+receiveRequest :: Connection -> SockAddr -> Source -> IO (Request, CommonRequestHeaders, IO ByteString)
+receiveRequest conn remoteHost source = do
   headerLines <- do
     bytes <- Source.read1 source
     push source (THStatus 0 0 id id) bytes
 
   (method, unparsedPath, rawQueryString, httpVersion, requestHeaders) <- parseHeaderLines headerLines
 
-  let path = Http.extractPath unparsedPath
+  let rawPathInfo = Http.extractPath unparsedPath
       commonHeaders = CommonRequestHeaders.make requestHeaders
 
   (getBodyChunk, bodyLength) <-
@@ -56,8 +55,8 @@ receiveRequest settings conn remoteHost source = do
         Request
           { requestMethod = method,
             httpVersion,
-            pathInfo = Http.decodePathSegments path,
-            rawPathInfo = if settingsNoParsePath settings then unparsedPath else path,
+            pathInfo = Http.decodePathSegments rawPathInfo,
+            rawPathInfo,
             rawQueryString,
             queryString = Http.parseQuery rawQueryString,
             requestHeaders,

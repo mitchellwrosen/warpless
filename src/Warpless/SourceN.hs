@@ -1,13 +1,13 @@
-module Warpless.HTTP1.SourceN
+module Warpless.SourceN
   ( new,
     read,
   )
 where
 
 import Data.ByteString qualified as ByteString
-import Warpless.HTTP1.Source (Source)
-import Warpless.HTTP1.Source qualified as Source
 import Warpless.Prelude
+import Warpless.Source (Source)
+import Warpless.Source qualified as Source
 
 data SourceN
   = SourceN

@@ -1,4 +1,4 @@
-module Warpless.HTTP1.Response
+module Warpless.Response
   ( sendResponse,
     hasBody,
     replaceHeader,

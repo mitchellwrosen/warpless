@@ -28,7 +28,7 @@ run settings app =
   -- On exception, attempt to close the server socket.
   bracket
     (bindPortTCP (settingsPort settings) (settingsHost settings))
-    (\socket -> uninterruptibleMask_ (ignoringExceptions (Network.close socket)))
+    (uninterruptibleMask_ . ignoringExceptions . Network.close)
     (run1 settings app)
 
 run1 :: Settings -> Application -> Network.Socket -> IO b
@@ -98,6 +98,4 @@ handleClient settings app getDate socket addr = do
         unsafeUnmask action `onException` Connection.close conn
         Connection.close conn
 
-  closingConnection do
-    bytes <- Connection.receive conn
-    http1 settings getDate conn app addr bytes
+  closingConnection (http1 settings getDate conn app addr)

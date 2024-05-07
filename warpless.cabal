@@ -62,6 +62,7 @@ Library
     Paths_warpless
     Warpless.Byte
     Warpless.ByteString
+    Warpless.ChunkedSource
     Warpless.CommonRequestHeaders
     Warpless.CommonResponseHeaders
     Warpless.Connection
@@ -70,17 +71,16 @@ Library
     Warpless.File
     Warpless.FileInfo
     Warpless.HTTP1
-    Warpless.HTTP1.ChunkedSource
-    Warpless.HTTP1.Request
-    Warpless.HTTP1.Response
-    Warpless.HTTP1.Source
-    Warpless.HTTP1.SourceN
     Warpless.IO
     Warpless.Prelude
+    Warpless.Request
     Warpless.RequestHeader
+    Warpless.Response
     Warpless.ResponseHeader
     Warpless.Run
     Warpless.Settings
+    Warpless.Source
+    Warpless.SourceN
     Warpless.Types
     Warpless.WriteBuffer
   ghc-options:

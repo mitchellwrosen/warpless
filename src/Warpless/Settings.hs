@@ -24,27 +24,7 @@ data Settings = Settings
     settingsHost :: !HostPreference,
     -- | What to do with exceptions thrown by either the application or server.
     -- Default: 'defaultOnException'
-    settingsOnException :: !(SomeException -> IO ()),
-    -- | Perform no parsing on the rawPathInfo.
-    --
-    -- This is useful for writing HTTP proxies.
-    --
-    -- Default: False
-    settingsNoParsePath :: !Bool,
-    -- | A HTTP/2 server push log function. Default: no action.
-    settingsServerPushLogger :: !(Request -> ByteString -> Integer -> IO ()),
-    -- | Determines the maxium buffer size when sending `Builder` responses
-    -- (See `responseBuilder`).
-    --
-    -- When sending a builder response warp uses a 16 KiB buffer to write the
-    -- builder to. When that buffer is too small to fit the builder warp will
-    -- free it and create a new one that will fit the builder.
-    --
-    -- To protect against allocating too large a buffer warp will error if the
-    -- builder requires more than this maximum.
-    --
-    -- Default: 1049_000_000 = 1 MiB.
-    settingsMaxBuilderResponseBufferSize :: !Int
+    settingsOnException :: !(SomeException -> IO ())
   }
 
 -- | The default settings for the Warp server. See the individual settings for
@@ -54,10 +34,7 @@ defaultSettings =
   Settings
     { settingsPort = 3000,
       settingsHost = "*4",
-      settingsOnException = \_ -> pure (),
-      settingsNoParsePath = False,
-      settingsServerPushLogger = \_ _ _ -> pure (),
-      settingsMaxBuilderResponseBufferSize = 1049000000
+      settingsOnException = \_ -> pure ()
     }
 
 -- | Sending 500 for internal server errors.

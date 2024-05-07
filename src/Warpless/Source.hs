@@ -1,4 +1,4 @@
-module Warpless.HTTP1.Source
+module Warpless.Source
   ( Source,
     make,
     read,

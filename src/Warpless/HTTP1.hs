@@ -14,25 +14,21 @@ import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
 import Warpless.Connection (Connection)
 import Warpless.Connection qualified as Connection
 import Warpless.Date (GMTDate)
-import Warpless.HTTP1.Request (receiveRequest)
-import Warpless.HTTP1.Response (sendResponse)
-import Warpless.HTTP1.Source (Source)
-import Warpless.HTTP1.Source qualified as Source
 import Warpless.Prelude
+import Warpless.Request (receiveRequest)
+import Warpless.Response (sendResponse)
 import Warpless.Settings (Settings (settingsOnException), defaultOnExceptionResponse)
+import Warpless.Source (Source)
+import Warpless.Source qualified as Source
 
-http1 :: Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> ByteString -> IO ()
-http1 settings getDate conn application addr bytes0 = do
+http1 :: Settings -> IO GMTDate -> Connection -> Application -> SockAddr -> IO ()
+http1 settings getDate conn application addr = do
   -- Create a source of bytes from the client's connection.
   source <- Source.make (Connection.receive conn)
 
-  -- We already read one chunk of bytes to determine if this was an HTTP2 request. It wasn't. Put those bytes back at
-  -- the front of the source, for us to read next.
-  Source.setLeftovers source bytes0
-
   let loop :: IO ()
       loop = do
-        (request, commonHeaders, getBodyChunk) <- receiveRequest settings conn addr source
+        (request, commonHeaders, getBodyChunk) <- receiveRequest conn addr source
         keepAlive <- processRequest settings getDate conn application source request commonHeaders getBodyChunk
         when keepAlive loop
   loop
