@@ -1,9 +1,9 @@
 cabal-version: 2.2
 
-author: Michael Snoyman, Kazu Yamamoto, Matt Brown, Mitchell Rosen
+author: Michael Snoyman, Kazu Yamamoto, Matt Brown, Mitchell Dalvi Rosen
 bug-reports: https://github.com/mitchellwrosen/warpless/issues
 category: Web
-copyright: Copyright (C) 2012-2017 Michael Snoyman, 2023 Mitchell Rosen
+copyright: Copyright (C) 2012-2017 Michael Snoyman, 2023-2024 Mitchell Dalvi Rosen
 homepage: https://github.com/mitchellwrosen/warpless
 license-file: LICENSE
 license: MIT
@@ -34,13 +34,11 @@ Library
     case-insensitive ^>= 1.2,
     http-date,
     http-types >= 0.12,
-    http2 ^>= 5.2.0,
     ki ^>= 1.0.0.2,
     network ^>= 3.1.2,
     recv ^>= 0.1.0,
     simple-sendfile >= 0.2.7 && < 0.3,
     streaming-commons >= 0.1.10,
-    time-manager ^>= 0.1.0,
     unix ^>= 2.8.0,
     vault >= 0.3,
     wai ^>= 3.2.2,
@@ -77,12 +75,6 @@ Library
     Warpless.HTTP1.Response
     Warpless.HTTP1.Source
     Warpless.HTTP1.SourceN
-    Warpless.HTTP2
-    Warpless.HTTP2.File
-    Warpless.HTTP2.PushPromise
-    Warpless.HTTP2.Request
-    Warpless.HTTP2.Response
-    Warpless.HTTP2.Types
     Warpless.IO
     Warpless.Prelude
     Warpless.RequestHeader

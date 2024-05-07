@@ -6,7 +6,6 @@ where
 import Control.AutoUpdate (defaultUpdateSettings, mkAutoUpdate, updateAction, updateFreq)
 import Control.Exception (MaskingState (..), allowInterrupt)
 import Control.Monad (forever)
-import Data.ByteString qualified as ByteString
 import Data.Streaming.Network (bindPortTCP)
 import GHC.IO (unsafeUnmask)
 import Ki qualified
@@ -18,7 +17,6 @@ import Warpless.Connection qualified as Connection
 import Warpless.Date (GMTDate)
 import Warpless.Exception (ignoringExceptions)
 import Warpless.HTTP1 (http1)
-import Warpless.HTTP2 (http2)
 import Warpless.Prelude
 import Warpless.Settings (Settings, settingsHost, settingsPort)
 import Warpless.Types (WeirdClient (WeirdClient))
@@ -101,13 +99,5 @@ handleClient settings app getDate socket addr = do
         Connection.close conn
 
   closingConnection do
-    -- Read a bit of from the client to determine if this is an HTTP/1 or HTTP/2 request, then handle the client!
-    --
-    -- ...Oops! This code is slightly bogusoid because we (of course) aren't guaranteed to get a 4-byte read. That bug
-    -- is present in `warp`, let's fix it there and port the fix over here.
-    --
-    -- FIXME: support upgrading to HTTP/2
     bytes <- Connection.receive conn
-    if ByteString.length bytes >= 4 && "PRI " `ByteString.isPrefixOf` bytes
-      then http2 settings getDate conn app addr bytes
-      else http1 settings getDate conn app addr bytes
+    http1 settings getDate conn app addr bytes

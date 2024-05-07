@@ -8,6 +8,7 @@ Latest commit ported over: `2a7399f5229f6a8ea675a20cf0cf8f69ba8b9f72`.
 ## Changes
 
 - No `https` support.
+- NO `HTTP/2` support.
 - No slowloris protection.
 - No file descriptor cache.
 - No file info cache.

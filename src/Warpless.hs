@@ -50,37 +50,11 @@ module Warpless
     -- * Utilities
     FileInfo (..),
     getFileInfo,
-
-    -- * HTTP/2
-
-    -- ** HTTP2 data
-    HTTP2Data,
-    http2dataPushPromise,
-    http2dataTrailers,
-    defaultHTTP2Data,
-    getHTTP2Data,
-    setHTTP2Data,
-    modifyHTTP2Data,
-
-    -- ** Push promise
-    PushPromise,
-    promisedPath,
-    promisedFile,
-    promisedResponseHeaders,
-    promisedWeight,
-    defaultPushPromise,
   )
 where
 
 import Data.Streaming.Network (HostPreference)
 import Warpless.FileInfo (FileInfo (..), getFileInfo)
-import Warpless.HTTP2.Request (getHTTP2Data, modifyHTTP2Data, setHTTP2Data)
-import Warpless.HTTP2.Types
-  ( HTTP2Data (http2dataPushPromise, http2dataTrailers),
-    PushPromise (promisedFile, promisedPath, promisedResponseHeaders, promisedWeight),
-    defaultHTTP2Data,
-    defaultPushPromise,
-  )
 import Warpless.Run (run)
 import Warpless.Settings (Settings (..), defaultOnExceptionResponse, defaultSettings)
 import Warpless.Types (Port)
