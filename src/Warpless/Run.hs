@@ -63,7 +63,7 @@ run1 settings app serverSocket = do
         allowInterrupt
 
         -- Accept a client!
-        (clientSocket, clientAddr) <- Network.accept serverSocket
+        client <- Network.accept serverSocket
 
         -- Fork a thread to handle the client, with asynchronous exceptions uninterruptibly masked. The client thread is
         -- meant to arrange so that by the time asynchronous exceptions are allowed again, an exception handler is
@@ -75,14 +75,14 @@ run1 settings app serverSocket = do
         -- that may *think* they are speaking a dialogue of HTTP we can understand will just be ignored.
         void do
           Ki.forkWith @() scope clientThreadOptions do
-            handleClient settings app getDate clientSocket clientAddr `catch` \WeirdClient -> pure ()
+            handleClient settings app getDate client `catch` \WeirdClient -> pure ()
   where
     clientThreadOptions :: Ki.ThreadOptions
     clientThreadOptions =
       Ki.defaultThreadOptions {Ki.maskingState = MaskedUninterruptible}
 
-handleClient :: Settings -> Application -> IO GMTDate -> Network.Socket -> Network.SockAddr -> IO ()
-handleClient settings app getDate socket addr = do
+handleClient :: Settings -> Application -> IO GMTDate -> (Network.Socket, Network.SockAddr) -> IO ()
+handleClient settings app getDate (socket, addr) = do
   -- Disable Nagle's algorithm, which attempts to reduce network traffic by buffering writes until enough data is
   -- enqueued. Ignore exceptions, because on a unix socket, this operation throws an exception.
   ignoringExceptions (Network.setSocketOption socket Network.NoDelay 1)

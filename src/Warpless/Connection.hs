@@ -3,7 +3,6 @@ module Warpless.Connection
     create,
     close,
     socketAddr,
-    setIsHttp2,
     send,
     sendfile,
     receive,
@@ -18,7 +17,7 @@ import Network.Socket qualified as Network
 import Network.Socket.BufferPool (BufferPool)
 import Network.Socket.BufferPool qualified as Recv
 import Network.Socket.ByteString qualified as Sock
-import Warpless.Exception (ignoringExceptions, isSyncException)
+import Warpless.Exception (isSyncException)
 import Warpless.Prelude
 import Warpless.Types (WeirdClient (..))
 import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
@@ -34,9 +33,7 @@ data Connection = Connection
     -- response it's detected the current 'WriteBuffer' is too small it will be
     -- freed and a new bigger buffer will be created and written to this
     -- reference.
-    writeBufferRef :: !(IORef WriteBuffer),
-    -- | Is this connection HTTP/2?
-    connHTTP2 :: !(IORef Bool)
+    writeBufferRef :: !(IORef WriteBuffer)
   }
 
 -- | Creating 'Connection' for plain HTTP based on a given socket.
@@ -46,30 +43,22 @@ create socket = do
   bufferPool <- Recv.newBufferPool 2048 16384
   writeBuffer <- createWriteBuffer 16384
   writeBufferRef <- newIORef writeBuffer
-  isHttp2 <- newIORef False -- HTTP/1.x
   pure
     Connection
       { connSock = socket,
         socketAddr,
         bufferPool,
-        writeBufferRef,
-        connHTTP2 = isHttp2
+        writeBufferRef
       }
 
 -- | Clean up a connection. Never throws an exception.
 --
 -- Precondition: called with exceptions uninterruptibly masked.
 close :: Connection -> IO ()
-close Connection {connHTTP2, connSock, writeBufferRef} = do
-  readIORef connHTTP2 >>= \case
-    False -> Network.close connSock -- doesn't throw
-    True -> ignoringExceptions (Network.gracefulClose connSock 2000)
+close Connection {connSock, writeBufferRef} = do
+  Network.close connSock -- doesn't throw
   writeBuffer <- readIORef writeBufferRef
   freeWriteBuffer writeBuffer
-
-setIsHttp2 :: Connection -> IO ()
-setIsHttp2 conn =
-  writeIORef (connHTTP2 conn) True
 
 -- | The connection sending function.
 --

@@ -1,5 +1,6 @@
 module Warpless.Prelude
   ( module Reexports,
+    doWhile,
   )
 where
 
@@ -43,3 +44,12 @@ import GHC.Real as Reexports (divMod, mod)
 import System.IO as Reexports (FilePath, IO)
 import Text.Show as Reexports (Show, show)
 import Witch as Reexports (from, unsafeFrom)
+
+-- | Perform an action until it returns false.
+doWhile :: IO Bool -> IO ()
+doWhile action =
+  loop
+  where
+    loop = do
+      result <- action
+      when result loop

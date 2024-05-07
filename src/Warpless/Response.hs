@@ -5,7 +5,7 @@ module Warpless.Response
   )
 where
 
-import Data.ByteString qualified as S
+import Data.ByteString qualified as ByteString
 import Data.ByteString.Builder (Builder, byteString)
 import Data.ByteString.Builder.Extra (flush)
 import Data.ByteString.Builder.HTTP.Chunked (chunkedTransferEncoding, chunkedTransferTerminator)
@@ -156,7 +156,7 @@ sanitizeHeaders = List.map (sanitize <$>)
       | otherwise = v -- fast path
 
 sanitizeHeaderValue :: ByteString -> ByteString
-sanitizeHeaderValue v = case C8.lines $ S.filter (/= Byte.cr) v of
+sanitizeHeaderValue v = case C8.lines $ ByteString.filter (/= Byte.cr) v of
   [] -> ""
   x : xs -> C8.intercalate "\r\n" (x : mapMaybe addSpaceIfMissing xs)
   where
@@ -195,7 +195,7 @@ sendRspStream conn ver status headers streamingBody needsChunked = do
         popper <- recv builder
         let loop = do
               bytes <- popper
-              when (not (S.null bytes)) do
+              when (not (ByteString.null bytes)) do
                 Connection.send conn bytes
                 loop
         loop

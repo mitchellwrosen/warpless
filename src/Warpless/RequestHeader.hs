@@ -3,6 +3,7 @@ module Warpless.RequestHeader
   )
 where
 
+import Data.Bifunctor (bimap)
 import Data.ByteString qualified as ByteString
 import Data.ByteString.Internal (ByteString (..), memchr)
 import Data.CaseInsensitive qualified as CI
@@ -13,6 +14,7 @@ import Foreign.Ptr (Ptr, minusPtr, nullPtr, plusPtr)
 import Foreign.Storable (peek)
 import GHC.Real (fromIntegral)
 import Network.HTTP.Types qualified as Http
+import Warpless.Byte qualified as Byte
 import Warpless.Prelude
 import Warpless.Types (WeirdClient (..))
 
@@ -33,18 +35,16 @@ parseHeaderLines = \case
 
 ----------------------------------------------------------------
 
--- |
---
 -- >>> parseRequestLine "GET / HTTP/1.1"
 -- ("GET","/","",HTTP/1.1)
 -- >>> parseRequestLine "POST /cgi/search.cgi?key=foo HTTP/1.0"
 -- ("POST","/cgi/search.cgi","?key=foo",HTTP/1.0)
 -- >>> parseRequestLine "GET "
--- *** Exception: Warp: Invalid first line of request: "GET "
+-- WeirdClient
 -- >>> parseRequestLine "GET /NotHTTP UNKNOWN/1.1"
--- *** Exception: Warp: Request line specified a non-HTTP request
+-- WeirdClient
 -- >>> parseRequestLine "PRI * HTTP/2.0"
--- ("PRI","*","",HTTP/2.0)
+-- WeirdClient
 parseRequestLine ::
   ByteString ->
   IO
@@ -88,25 +88,24 @@ parseRequestLine (PS fptr off len) =
       w0 <- peek $ p `plusPtr` n
       when (w0 /= w) (throwIO WeirdClient)
 
+    -- H T T P / .
     checkHTTP :: Ptr Word8 -> IO ()
     checkHTTP httpptr = do
-      check httpptr 0 72 -- 'H'
-      check httpptr 1 84 -- 'T'
-      check httpptr 2 84 -- 'T'
-      check httpptr 3 80 -- 'P'
-      check httpptr 4 47 -- '/'
-      check httpptr 6 46 -- '.'
+      check httpptr 0 72
+      check httpptr 1 84
+      check httpptr 2 84
+      check httpptr 3 80
+      check httpptr 4 47
+      check httpptr 6 46
+
     httpVersion :: Ptr Word8 -> IO Http.HttpVersion
     httpVersion httpptr = do
-      major :: Word8 <- peek (httpptr `plusPtr` 5)
-      minor :: Word8 <- peek (httpptr `plusPtr` 7)
-      pure
-        if major == 49
-          then if minor == 49 then Http.http11 else Http.http10
-          else
-            if major == 50 && minor == 48
-              then Http.HttpVersion 2 0
-              else Http.http10
+      check httpptr 5 49
+      peek @Word8 (httpptr `plusPtr` 7) >>= \case
+        49 -> pure Http.http11
+        48 -> pure Http.http10
+        _ -> throwIO WeirdClient
+
     bs :: Ptr Word8 -> Ptr Word8 -> Ptr Word8 -> ByteString
     bs ptr p0 p1 = PS fptr o l
       where
@@ -115,8 +114,6 @@ parseRequestLine (PS fptr off len) =
 
 ----------------------------------------------------------------
 
--- |
---
 -- >>> parseHeader "Content-Length:47"
 -- ("Content-Length","47")
 -- >>> parseHeader "Accept-Ranges: bytes"
@@ -126,7 +123,8 @@ parseRequestLine (PS fptr off len) =
 -- >>> parseHeader "NoSemiColon"
 -- ("NoSemiColon","")
 parseHeader :: ByteString -> Http.Header
-parseHeader s =
-  let (k, rest) = ByteString.break (== 58) s -- ':'
-      rest' = ByteString.dropWhile (\c -> c == 32 || c == 9) $ ByteString.drop 1 rest
-   in (CI.mk k, rest')
+parseHeader =
+  bimap CI.mk parse . split
+  where
+    split = ByteString.break (== Byte.colon)
+    parse = ByteString.dropWhile (\c -> c == Byte.space || c == Byte.tab) . ByteString.drop 1

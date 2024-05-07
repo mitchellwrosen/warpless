@@ -11,7 +11,7 @@ import Warpless.Prelude
 import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
 
 toBufIOWith :: IORef WriteBuffer -> (ByteString -> IO ()) -> Builder -> IO ()
-toBufIOWith writeBufferRef io builder = do
+toBufIOWith writeBufferRef io = \builder -> do
   writeBuffer <- readIORef writeBufferRef
   loop writeBuffer (runBuilder builder)
   where
