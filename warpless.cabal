@@ -51,6 +51,7 @@ Library
     LambdaCase
     MultiWayIf
     NoImplicitPrelude
+    OverloadedRecordDot
     OverloadedStrings
     PatternSynonyms
     ViewPatterns
@@ -70,7 +71,6 @@ Library
     Warpless.Exception
     Warpless.File
     Warpless.FileInfo
-    Warpless.HTTP1
     Warpless.IO
     Warpless.Prelude
     Warpless.Request

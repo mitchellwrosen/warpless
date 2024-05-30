@@ -30,8 +30,8 @@ parseHeaderLines ::
 parseHeaderLines = \case
   [] -> throwIO WeirdClient
   firstLine : otherLines -> do
-    (method, path', query, httpversion) <- parseRequestLine firstLine
-    pure (method, path', query, httpversion, List.map parseHeader otherLines)
+    (method, unparsedPath, query, httpversion) <- parseRequestLine firstLine
+    pure (method, Http.extractPath unparsedPath, query, httpversion, List.map parseHeader otherLines)
 
 ----------------------------------------------------------------
 
@@ -39,6 +39,8 @@ parseHeaderLines = \case
 -- ("GET","/","",HTTP/1.1)
 -- >>> parseRequestLine "POST /cgi/search.cgi?key=foo HTTP/1.0"
 -- ("POST","/cgi/search.cgi","?key=foo",HTTP/1.0)
+-- >>> parseRequestLine "POST http://example.com:8080/hello HTTP/1.0"
+-- ("POST","http://example.com:8080/hello","",HTTP/1.0)
 -- >>> parseRequestLine "GET "
 -- WeirdClient
 -- >>> parseRequestLine "GET /NotHTTP UNKNOWN/1.1"

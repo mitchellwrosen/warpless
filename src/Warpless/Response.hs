@@ -128,7 +128,7 @@ sendResponse conn getDate request commonRequestHeaders source response = do
             if isHead then doSendRspNoBody else sendRspStream conn ver status headers body needsChunked
             pure isKeepAlive
           ResponseRaw raw _ -> do
-            sendRspRaw conn raw source
+            raw source (Connection.send conn)
             pure False
       else do
         doSendRspNoBody
@@ -207,10 +207,6 @@ sendRspStream conn ver status headers streamingBody needsChunked = do
   when needsChunked $ send chunkedTransferTerminator
   mbs <- finish
   for_ mbs (Connection.send conn)
-
-sendRspRaw :: Connection -> (IO ByteString -> (ByteString -> IO ()) -> IO ()) -> IO ByteString -> IO ()
-sendRspRaw conn withApp src =
-  withApp src (Connection.send conn)
 
 sendRspFile ::
   Connection ->
