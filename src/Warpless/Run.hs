@@ -3,7 +3,6 @@ module Warpless.Run
   )
 where
 
-import Control.AutoUpdate (defaultUpdateSettings, mkAutoUpdate, updateAction, updateFreq)
 import Control.Exception (MaskingState (..), allowInterrupt)
 import Control.Monad (forever)
 import Data.Streaming.Network (bindPortTCP)
@@ -12,7 +11,7 @@ import Ki qualified
 import Network.HTTP.Date (epochTimeToHTTPDate, formatHTTPDate)
 import Network.Socket qualified as Network
 import Network.Wai (Application)
-import System.Posix (epochTime)
+import System.Posix.Time (epochTime)
 import Warpless.Connection qualified as Connection
 import Warpless.Date (GMTDate)
 import Warpless.Exception (ignoringExceptions)
@@ -20,6 +19,7 @@ import Warpless.HTTP1 (http1)
 import Warpless.Prelude
 import Warpless.Settings (Settings, settingsHost, settingsPort)
 import Warpless.Types (WeirdClient (WeirdClient))
+import Warpless.Cached (cached)
 
 run :: Settings -> Application -> IO ()
 run settings app =
@@ -33,18 +33,14 @@ run settings app =
 
 run1 :: Settings -> Application -> Network.Socket -> IO b
 run1 settings app serverSocket = do
-  -- Create an IO action that gets the current date (formatted as a ByteString like "Wed, 20 Dec 2023 03:29:48 GMT").
-  --
-  -- The date is computed on-demand, at most once per second. So, any given date returned by this function may be up to
-  -- one second in the past.
-  getDate <-
-    mkAutoUpdate
-      defaultUpdateSettings
-        { updateAction = formatHTTPDate . epochTimeToHTTPDate <$> epochTime,
-          updateFreq = 1_000_000 -- microseconds
-        }
-
   Ki.scoped \scope -> do
+    -- Create an IO action that gets the current date (formatted as a ByteString like "Wed, 20 Dec 2023 03:29:48 GMT"),
+    -- suitable as the value of a Date header. It is computed on-demand, at most once per second.
+    --
+    -- Quick-and-dirty benchmarking shows that it takes about 130 nanoseconds to make the syscall, but only 3
+    -- nanoseconds to grab it out of this cache.
+    getDate <- cached scope (formatHTTPDate . epochTimeToHTTPDate <$> epochTime) 1_000_000
+
     -- Mask asynchronous exceptions, so we don't accept a client socket, then fail to close it due to an intervening
     -- asynchronous exception.
     mask_ do

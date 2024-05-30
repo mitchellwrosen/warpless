@@ -28,7 +28,6 @@ Library
   Build-Depends:
     base ^>= 4.16 || ^>= 4.17 || ^>= 4.18 || ^>= 4.19,
     array,
-    auto-update ^>= 0.2.0,
     bsb-http-chunked ^>= 0.0,
     bytestring ^>= 0.10 || ^>= 0.11,
     case-insensitive ^>= 1.2,
@@ -62,6 +61,7 @@ Library
     Paths_warpless
     Warpless.Byte
     Warpless.ByteString
+    Warpless.Cached
     Warpless.ChunkedSource
     Warpless.CommonRequestHeaders
     Warpless.CommonResponseHeaders
@@ -89,9 +89,14 @@ Library
     -Wno-implicit-prelude
     -Wno-missed-specialisations
     -Wno-missing-import-lists
-    -Wno-missing-kind-signatures
     -Wno-missing-safe-haskell-mode
     -Wno-prepositive-qualified-module
     -Wno-safe
     -Wno-unsafe
+  if impl(ghc >= 9.2)
+    ghc-options:
+      -Wno-missing-kind-signatures
+  if impl(ghc >= 9.8)
+    ghc-options:
+      -Wno-missing-role-annotations
   HS-Source-Dirs:       src
