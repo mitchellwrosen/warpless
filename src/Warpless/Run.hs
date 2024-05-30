@@ -28,7 +28,7 @@ run settings app =
   -- On exception, attempt to close the server socket.
   bracket
     (bindPortTCP (settingsPort settings) (settingsHost settings))
-    (uninterruptibleMask_ . ignoringExceptions . Network.close)
+    (uninterruptibleMask_ . Network.close)
     (run1 settings app)
 
 run1 :: Settings -> Application -> Network.Socket -> IO b
