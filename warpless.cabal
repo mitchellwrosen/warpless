@@ -71,7 +71,6 @@ Library
     Warpless.Exception
     Warpless.File
     Warpless.FileInfo
-    Warpless.IO
     Warpless.Prelude
     Warpless.Request
     Warpless.RequestHeader

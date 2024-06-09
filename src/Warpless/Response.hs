@@ -36,7 +36,6 @@ import Warpless.Connection qualified as Connection
 import Warpless.Date qualified as D
 import Warpless.File (RspFileInfo (..), addContentHeadersForFilePart, conditionalRequest)
 import Warpless.FileInfo (getFileInfo)
-import Warpless.IO (toBufIOWith)
 import Warpless.Prelude
 import Warpless.ResponseHeader (composeHeader)
 import Warpless.Types (HeaderValue, WeirdClient)
@@ -178,15 +177,20 @@ sendRspNoBody conn ver status headers =
 sendRspBuilder :: Connection -> H.HttpVersion -> H.Status -> H.ResponseHeaders -> Builder -> Bool -> IO ()
 sendRspBuilder conn ver status headers body needsChunked = do
   header <- composeHeaderBuilder ver status headers needsChunked
-  let hdrBdy
-        | needsChunked =
-            header
-              <> chunkedTransferEncoding body
-              <> chunkedTransferTerminator
-        | otherwise = header <> body
-  toBufIOWith (Connection.writeBufferRef conn) (Connection.send conn) hdrBdy
+  Connection.sendBuilder
+    conn
+    if needsChunked
+      then header <> chunkedTransferEncoding body <> chunkedTransferTerminator
+      else header <> body
 
-sendRspStream :: Connection -> H.HttpVersion -> H.Status -> H.ResponseHeaders -> ((Builder -> IO ()) -> IO () -> IO ()) -> Bool -> IO ()
+sendRspStream ::
+  Connection ->
+  H.HttpVersion ->
+  H.Status ->
+  H.ResponseHeaders ->
+  ((Builder -> IO ()) -> IO () -> IO ()) ->
+  Bool ->
+  IO ()
 sendRspStream conn ver status headers streamingBody needsChunked = do
   header <- composeHeaderBuilder ver status headers needsChunked
   writeBuffer <- readIORef (Connection.writeBufferRef conn)
@@ -204,7 +208,7 @@ sendRspStream conn ver status headers streamingBody needsChunked = do
         | otherwise = send
   send header
   streamingBody sendChunk (sendChunk flush)
-  when needsChunked $ send chunkedTransferTerminator
+  when needsChunked (send chunkedTransferTerminator)
   mbs <- finish
   for_ mbs (Connection.send conn)
 

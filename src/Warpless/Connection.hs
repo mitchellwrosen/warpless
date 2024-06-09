@@ -3,6 +3,7 @@ module Warpless.Connection
     create,
     close,
     send,
+    sendBuilder,
     sendfile,
     receive,
     writeBufferRef,
@@ -10,6 +11,10 @@ module Warpless.Connection
 where
 
 import Data.ByteString qualified as ByteString
+import Data.ByteString.Builder (Builder)
+import Data.ByteString.Builder.Extra (BufferWriter, Next (Chunk, Done, More), runBuilder)
+import Data.ByteString.Internal (ByteString (PS))
+import Foreign (Ptr, free, newForeignPtr_)
 import Network.Sendfile (FileRange (PartOfFile), sendfileWithHeader)
 import Network.Socket qualified as Network
 import Network.Socket.BufferPool (BufferPool)
@@ -18,7 +23,8 @@ import Network.Socket.ByteString qualified as Network
 import Warpless.Exception (isSyncException)
 import Warpless.Prelude
 import Warpless.Types (WeirdClient (..))
-import Warpless.WriteBuffer (WriteBuffer (..), createWriteBuffer, freeWriteBuffer)
+import Warpless.WriteBuffer (WriteBuffer (..))
+import Warpless.WriteBuffer qualified as WriteBuffer
 
 data Connection = Connection
   { -- | The underlying socket.
@@ -35,7 +41,7 @@ data Connection = Connection
 create :: Network.Socket -> IO Connection
 create socket = do
   bufferPool <- Recv.newBufferPool 2048 16384
-  writeBuffer <- createWriteBuffer 16384
+  writeBuffer <- WriteBuffer.allocate 16384
   writeBufferRef <- newIORef writeBuffer
   pure Connection {socket, bufferPool, writeBufferRef}
 
@@ -45,8 +51,8 @@ create socket = do
 close :: Connection -> IO ()
 close conn = do
   Network.close conn.socket -- doesn't throw
-  writeBuffer <- readIORef conn.writeBufferRef
-  freeWriteBuffer writeBuffer
+  WriteBuffer buf _size <- readIORef conn.writeBufferRef
+  free buf
 
 -- | The connection sending function.
 --
@@ -60,6 +66,32 @@ send conn bytes =
     if isSyncException exception
       then throwIO WeirdClient
       else throwIO exception
+
+sendBuilder :: Connection -> Builder -> IO ()
+sendBuilder conn = \builder -> do
+  WriteBuffer buf size <- readIORef conn.writeBufferRef
+  loop buf size (runBuilder builder)
+  where
+    loop :: Ptr Word8 -> Int -> BufferWriter -> IO ()
+    loop buf size writer = do
+      (len, signal) <- writer buf size
+      fptr <- newForeignPtr_ buf
+      send conn (PS fptr 0 len)
+      case signal of
+        Done -> pure ()
+        More minSize writer1
+          | size < minSize -> do
+              WriteBuffer buf1 size1 <-
+                mask_ do
+                  free buf
+                  biggerWriteBuffer <- WriteBuffer.allocate minSize
+                  writeIORef conn.writeBufferRef biggerWriteBuffer
+                  pure biggerWriteBuffer
+              loop buf1 size1 writer1
+          | otherwise -> loop buf size writer1
+        Chunk bytes writer1 -> do
+          send conn bytes
+          loop buf size writer1
 
 -- | The sending function for files in HTTP/1.1.
 sendfile :: Connection -> FilePath -> Integer -> Integer -> IO () -> [ByteString] -> IO ()

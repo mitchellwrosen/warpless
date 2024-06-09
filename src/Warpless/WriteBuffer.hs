@@ -1,47 +1,27 @@
 module Warpless.WriteBuffer
-  ( WriteBuffer (bufBuffer, bufSize),
-    createWriteBuffer,
-    freeWriteBuffer,
+  ( WriteBuffer (..),
+    allocate,
     toBuilderBuffer,
   )
 where
 
 import Data.Streaming.ByteString.Builder.Buffer qualified as B (Buffer (..))
 import Foreign.ForeignPtr (newForeignPtr_)
-import Foreign.Marshal.Alloc (free, mallocBytes)
-import Foreign.Ptr (plusPtr)
-import Network.Socket.BufferPool (BufSize, Buffer)
+import Foreign.Marshal.Alloc (mallocBytes)
+import Foreign.Ptr (Ptr, plusPtr)
 import Warpless.Prelude
 
--- | A write buffer of a specified size containing bytes and a way to free the buffer.
 data WriteBuffer = WriteBuffer
-  { bufBuffer :: !Buffer,
-    -- | The size of the write buffer.
-    bufSize :: !BufSize,
-    -- | Free the allocated buffer. Warp guarantees it will only be called once, and no other functions will be called
-    -- after it.
-    bufFree :: !(IO ())
+  { buffer :: {-# UNPACK #-} !(Ptr Word8),
+    size :: {-# UNPACK #-} !Int
   }
 
--- | Allocate a buffer of the given size and wrap it in a 'WriteBuffer'
--- containing that size and a finalizer.
-createWriteBuffer :: BufSize -> IO WriteBuffer
-createWriteBuffer size = do
-  bytes <- mallocBytes size
-  pure
-    WriteBuffer
-      { bufBuffer = bytes,
-        bufSize = size,
-        bufFree = free bytes
-      }
-
-freeWriteBuffer :: WriteBuffer -> IO ()
-freeWriteBuffer WriteBuffer {bufFree} =
-  bufFree
+allocate :: Int -> IO WriteBuffer
+allocate size = do
+  buffer <- mallocBytes size
+  pure WriteBuffer {buffer, size}
 
 toBuilderBuffer :: WriteBuffer -> IO B.Buffer
-toBuilderBuffer writeBuffer = do
-  let ptr = bufBuffer writeBuffer
-      size = bufSize writeBuffer
-  fptr <- newForeignPtr_ ptr
-  pure (B.Buffer fptr ptr ptr (ptr `plusPtr` size))
+toBuilderBuffer (WriteBuffer buf size) = do
+  fbuf <- newForeignPtr_ buf
+  pure (B.Buffer fbuf buf buf (buf `plusPtr` size))
