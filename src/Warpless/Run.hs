@@ -7,7 +7,6 @@ import Control.Concurrent qualified as Concurrent (yield)
 import Control.Exception (MaskingState (..), allowInterrupt)
 import Control.Monad (forever)
 import Data.ByteString qualified as ByteString
-import Data.Streaming.Network (bindPortTCP)
 import Data.Vault.Lazy qualified as Vault
 import GHC.IO (unsafeUnmask)
 import GHC.Real (fromIntegral)
@@ -30,23 +29,13 @@ import Warpless.Exception (ignoringExceptions)
 import Warpless.Prelude
 import Warpless.Request (receiveRequestHeaders)
 import Warpless.Response (sendResponse)
-import Warpless.Settings (Settings (settingsOnException), defaultOnExceptionResponse, settingsHost, settingsPort)
+import Warpless.Settings (Settings (settingsOnException), defaultOnExceptionResponse)
 import Warpless.Source qualified as Source
 import Warpless.SourceN qualified as SourceN
 import Warpless.Types (WeirdClient (WeirdClient))
 
-run :: Settings -> (Wai.Request -> (Wai.Response -> IO ()) -> IO ()) -> IO ()
-run settings application =
-  -- Bind the server socket and run the application.
-  --
-  -- On exception, attempt to close the server socket.
-  bracket
-    (bindPortTCP (settingsPort settings) (settingsHost settings))
-    (uninterruptibleMask_ . Network.close)
-    (run1 settings application)
-
-run1 :: Settings -> (Wai.Request -> (Wai.Response -> IO ()) -> IO ()) -> Network.Socket -> IO b
-run1 settings application serverSocket = do
+run :: Settings -> Network.Socket -> (Wai.Request -> (Wai.Response -> IO ()) -> IO ()) -> IO v
+run settings serverSocket application = do
   Ki.scoped \scope -> do
     -- Create an IO action that gets the current date (formatted as a ByteString like "Wed, 20 Dec 2023 03:29:48 GMT"),
     -- suitable as the value of a Date header. It is computed on-demand, at most once per second.
@@ -55,7 +44,7 @@ run1 settings application serverSocket = do
     -- nanoseconds to grab it out of this cache.
     getDate <- cached scope (formatHTTPDate . epochTimeToHTTPDate <$> epochTime) 1_000_000
 
-    -- Mask asynchronous exceptions, so we don't accept a client socket, then fail to close it due to an intervening
+    -- Mask asynchronous exceptions so we don't accept a client socket and fail to close it due to an intervening
     -- asynchronous exception.
     mask_ do
       -- Accept clients in a loop, forever.

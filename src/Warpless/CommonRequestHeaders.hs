@@ -26,7 +26,7 @@ import Data.CaseInsensitive (foldedCase)
 import Data.CaseInsensitive qualified as CaseInsensitive
 import GHC.Enum (Bounded, Enum, fromEnum, maxBound)
 import Network.HTTP.Date (HTTPDate, parseHTTPDate)
-import Network.HTTP.Types (Header, HeaderName, RequestHeaders)
+import Network.HTTP.Types (HeaderName, RequestHeaders)
 import Warpless.Prelude
 import Warpless.Types (HeaderValue)
 
@@ -42,14 +42,14 @@ make :: RequestHeaders -> CommonRequestHeaders
 make headers =
   CommonRequestHeaders (make_ headers)
 
-make_ :: [Header] -> Array Int (Maybe HeaderValue)
+make_ :: [(HeaderName, HeaderValue)] -> Array Int (Maybe HeaderValue)
 make_ header =
   runSTArray do
     arr <- newArray (0, maxIndex) Nothing
     traverse_ (insert arr) header
     pure arr
   where
-    insert :: STArray s Int (Maybe HeaderValue) -> Header -> ST s ()
+    insert :: STArray s Int (Maybe HeaderValue) -> (HeaderName, HeaderValue) -> ST s ()
     insert arr (key, val) =
       when (idx /= -1) do
         writeArray arr idx (Just val)
