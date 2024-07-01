@@ -21,12 +21,12 @@ import Warpless.Prelude
 
 -- | File information.
 data FileInfo = FileInfo
-  { fileInfoName :: !FilePath,
-    fileInfoSize :: !Integer,
+  { name :: !FilePath,
+    size :: !Integer,
     -- | Modification time
-    fileInfoTime :: !HTTPDate,
+    time :: !HTTPDate,
     -- | Modification time in the GMT format
-    fileInfoDate :: !ByteString
+    date :: !ByteString
   }
   deriving stock (Eq, Show)
 
@@ -36,17 +36,14 @@ getFileInfo path = do
   fs <- getFileStatus path -- file access
   let regular = not (isDirectory fs)
       readable = fileMode fs `intersectFileModes` ownerReadMode /= 0
+      time = epochTimeToHTTPDate $ modificationTime fs
   if regular && readable
-    then do
-      let time = epochTimeToHTTPDate $ modificationTime fs
-          date = formatHTTPDate time
-          size = fileSize fs
-          info =
-            FileInfo
-              { fileInfoName = path,
-                fileInfoSize = fromIntegral @FileOffset @Integer size,
-                fileInfoTime = time,
-                fileInfoDate = date
-              }
-      pure info
+    then
+      pure
+        FileInfo
+          { name = path,
+            size = fromIntegral @FileOffset @Integer (fileSize fs),
+            time,
+            date = formatHTTPDate time
+          }
     else throwIO (userError "FileInfoCache:getInfo")

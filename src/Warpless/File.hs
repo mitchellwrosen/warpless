@@ -47,9 +47,9 @@ conditionalRequest finfo hs0 method commonResponseHeaders commonRequestHeaders =
           Nothing -> (H.hLastModified, date) : hs1
      in WithBody s hs off len
   where
-    !mtime = fileInfoTime finfo
-    !size = fileInfoSize finfo
-    !date = fileInfoDate finfo
+    !mtime = finfo.time
+    !size = finfo.size
+    !date = finfo.date
     -- According to RFC 9110:
     -- "A recipient cache or origin server MUST evaluate the request
     -- preconditions defined by this specification in the following order:

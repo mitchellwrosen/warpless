@@ -50,6 +50,7 @@ Library
     DerivingStrategies
     LambdaCase
     MultiWayIf
+    NoFieldSelectors
     NoImplicitPrelude
     OverloadedRecordDot
     OverloadedStrings

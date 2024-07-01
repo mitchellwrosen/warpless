@@ -1,12 +1,10 @@
 module Warpless.Connection
-  ( Connection,
+  ( Connection (..),
     create,
     close,
     send,
     sendBuilder,
     sendfile,
-    receive,
-    writeBufferRef,
   )
 where
 
@@ -17,11 +15,12 @@ import Data.ByteString.Internal (ByteString (PS))
 import Foreign (Ptr, free, newForeignPtr_)
 import Network.Sendfile (FileRange (PartOfFile), sendfileWithHeader)
 import Network.Socket qualified as Network
-import Network.Socket.BufferPool (BufferPool)
 import Network.Socket.BufferPool qualified as Recv
 import Network.Socket.ByteString qualified as Network
 import Warpless.Exception (isSyncException)
 import Warpless.Prelude
+import Warpless.Source (Source)
+import Warpless.Source qualified as Source
 import Warpless.Types (WeirdClient (..))
 import Warpless.WriteBuffer (WriteBuffer (..))
 import Warpless.WriteBuffer qualified as WriteBuffer
@@ -29,7 +28,8 @@ import Warpless.WriteBuffer qualified as WriteBuffer
 data Connection = Connection
   { -- | The underlying socket.
     socket :: !Network.Socket,
-    bufferPool :: !BufferPool,
+    sockAddr :: !Network.SockAddr,
+    source :: !Source,
     -- | Reference to a write buffer. When during sending of a 'Builder'
     -- response it's detected the current 'WriteBuffer' is too small it will be
     -- freed and a new bigger buffer will be created and written to this
@@ -38,12 +38,18 @@ data Connection = Connection
   }
 
 -- | Creating 'Connection' for plain HTTP based on a given socket.
-create :: Network.Socket -> IO Connection
-create socket = do
+create :: Network.Socket -> Network.SockAddr -> IO Connection
+create socket sockAddr = do
   bufferPool <- Recv.newBufferPool 2048 16384
+  source <-
+    Source.make do
+      Recv.receive socket bufferPool `catch` \exception ->
+        if isSyncException exception
+          then pure ByteString.empty
+          else throwIO exception
   writeBuffer <- WriteBuffer.allocate 16384
   writeBufferRef <- newIORef writeBuffer
-  pure Connection {socket, bufferPool, writeBufferRef}
+  pure Connection {socket, sockAddr, source, writeBufferRef}
 
 -- | Clean up a connection. Never throws an exception.
 --
@@ -97,13 +103,3 @@ sendBuilder conn = \builder -> do
 sendfile :: Connection -> FilePath -> Integer -> Integer -> IO () -> [ByteString] -> IO ()
 sendfile conn path off len =
   sendfileWithHeader conn.socket path (PartOfFile off len)
-
--- | The connection receiving function.
---
--- This function never throws an exception; synchronous exceptions are returned as empty bytes.
-receive :: Connection -> IO ByteString
-receive conn =
-  Recv.receive conn.socket conn.bufferPool `catch` \exception ->
-    if isSyncException exception
-      then pure ByteString.empty
-      else throwIO exception

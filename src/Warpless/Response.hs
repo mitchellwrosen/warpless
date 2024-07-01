@@ -31,8 +31,8 @@ import Warpless.CommonRequestHeaders (CommonRequestHeaders)
 import Warpless.CommonRequestHeaders qualified as CommonRequestHeaders
 import Warpless.CommonResponseHeaders (CommonResponseHeaders)
 import Warpless.CommonResponseHeaders qualified as CommonResponseHeaders
-import Warpless.Connection (Connection)
-import Warpless.Connection qualified as Connection
+import Warpless.Connection (Connection (..))
+import Warpless.Connection qualified as Connection (send, sendBuilder, sendfile)
 import Warpless.Date qualified as D
 import Warpless.File (RspFileInfo (..), addContentHeadersForFilePart, conditionalRequest)
 import Warpless.FileInfo (getFileInfo)
@@ -169,10 +169,11 @@ sanitizeHeaderValue v = case C8.lines $ ByteString.filter (/= Byte.cr) v of
 ----------------------------------------------------------------
 
 sendRspNoBody :: Connection -> H.HttpVersion -> H.Status -> H.ResponseHeaders -> IO ()
-sendRspNoBody conn ver status headers =
+sendRspNoBody conn ver status headers = do
   -- Not adding Content-Length.
   -- User agents treats it as Content-Length: 0.
-  composeHeader ver status headers >>= Connection.send conn
+  bytes <- composeHeader ver status headers
+  Connection.send conn bytes
 
 sendRspBuilder :: Connection -> H.HttpVersion -> H.Status -> H.ResponseHeaders -> Builder -> Bool -> IO ()
 sendRspBuilder conn ver status headers body needsChunked = do
@@ -193,7 +194,7 @@ sendRspStream ::
   IO ()
 sendRspStream conn ver status headers streamingBody needsChunked = do
   header <- composeHeaderBuilder ver status headers needsChunked
-  writeBuffer <- readIORef (Connection.writeBufferRef conn)
+  writeBuffer <- readIORef conn.writeBufferRef
   (recv, finish) <- newByteStringBuilderRecv (reuseBufferStrategy (toBuilderBuffer writeBuffer))
   let send builder = do
         popper <- recv builder
